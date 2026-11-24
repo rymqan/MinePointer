@@ -212,12 +212,7 @@ extension Config {
     static func storeCalibration(_ axes: CalibrationAxes, to url: URL = configURL) -> (up: [Double], forward: [Double]) {
         func rounded(_ v: SIMD3<Double>) -> [Double] { [v.x, v.y, v.z].map { ($0 * 1000).rounded() / 1000 } }
         let up = rounded(axes.up), forward = rounded(axes.forward)
-        var dict = ((try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-        dict["neutral_up"] = up
-        dict["forward_axis"] = forward
-        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) {
-            try? data.write(to: url)
-        }
+        try? updateConfigFile(["neutral_up": up, "forward_axis": forward], at: url)      // locked and atomic: the UI writes settings too
         return (up, forward)
     }
 }

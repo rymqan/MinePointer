@@ -1,7 +1,8 @@
 import AppKit
 import Carbon.HIToolbox
 
-// Modes: --self-test (offline checks), --replay [take ...] (recordings through the camera), --calibrate-log <helper.txt> (wizard steps 1-2 on a recording), otherwise live.
+// Modes: --self-test (offline checks), --replay [take ...] (recordings through the camera), --calibrate-log <helper.txt> (wizard steps 1-2 on a recording),
+// --engine (live: the child process of the UI app, talks EngineLink on stdout/stdin), anything else the UI app.
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 if arguments.first == "--self-test" {
@@ -10,7 +11,8 @@ if arguments.first == "--self-test" {
     cameraSelfTest()
     gestureSelfTest()
     calibrationSelfTest()
-    indicatorSelfTest()
+    engineLinkSelfTest()
+    appSelfTest()
     exit(0)
 }
 if arguments.first == "--calibrate-log", arguments.count > 1 {     // steps 1-2 of the wizard on a helper log
@@ -22,32 +24,64 @@ if arguments.first == "--calibrate-log", arguments.count > 1 {     // steps 1-2 
     print("up \(show(axes.up)) forward \(show(axes.forward)); off the config axes by \(String(format: "%.1f° / %.1f°", angleDegrees(axes.up, old.up), angleDegrees(axes.forward, old.forward)))")
     exit(0)
 }
-if arguments.first == "--indicator" { runIndicator() }     // the panel child, started by the live app
 if arguments.first == "--replay" {
     runReplay(arguments: Array(arguments.dropFirst()))
     exit(0)
 }
 
+if arguments.first != "--engine" { runApp() }       // no arguments, or whatever Finder or Xcode passes
+
 // MARK: live
 
+setvbuf(stdout, nil, _IOLBF, 0)     // stdout is the UI's pipe: every line goes out at once
+signal(SIGPIPE, SIG_IGN)            // a dead UI must not kill the engine through its pipe; stdin EOF quits it cleanly
 Config.writeDefaultsIfMissing()
 let camera = Camera(config: Config.load())
 let detector = GestureDetector(config: camera.config)
 let output = MouseOutput()
 let session = CaseSession()
-var outputEnabled = true
+var outputEnabled = !arguments.contains("--output-off")      // the UI restarts a crashed engine with the person's choice
 var lastSampleArrival = 0.0
 var lastLateNote = 0.0
 var streamLost = false
-var paused = false                  // case flat and still (detector .pause until .resume); for the indicator
-var reconnecting = false            // the session dropped and is coming back; for the indicator
+var paused = false                  // case flat and still (detector .pause until .resume); for the UI
+var reconnecting = false            // the session dropped and is coming back; for the UI
+var sessionText = ""                // the latest CaseSession state; for the UI
 var lastGesture = "", gestureSeq = 0
-func showGesture(_ text: String) { lastGesture = text; gestureSeq += 1 }
+/// The panel text and the "@gesture" line of a recognized gesture; sent also while output is off (the UI's gesture check).
+func showGesture(_ text: String, _ id: EngineGesture) { lastGesture = text; gestureSeq += 1; send(.gesture(id)) }
+func send(_ message: EngineMessage) { writeLine(message.line, droppable: false) }
+
+/// stdout is the UI's pipe, and the UI process is throttled while the game is in front (or may hang): lines go out on their own
+/// queue, so a full pipe never stalls the 240 Hz main thread that also releases the buttons. Past `maxPendingLines` waiting,
+/// new log lines are dropped; protocol lines never are (an @calibrated or @error has no second copy), and they are few.
+let stdoutQueue = DispatchQueue(label: "minepointer.stdout")
+let pendingLock = NSLock()
+var pendingLines = 0
+let maxPendingLines = 1000
+func writeLine(_ line: String, droppable: Bool = true) {
+    pendingLock.lock()
+    let room = !droppable || pendingLines < maxPendingLines
+    if room { pendingLines += 1 }
+    pendingLock.unlock()
+    guard room else { return }
+    stdoutQueue.async {
+        try? FileHandle.standardOutput.write(contentsOf: Data((line + "\n").utf8))      // fails (EPIPE) once the UI is gone
+        pendingLock.lock(); pendingLines -= 1; pendingLock.unlock()
+    }
+}
+
+/// Before exit: give the queued lines (an @error above all) up to a second to reach the UI.
+func flushLines() {
+    let done = DispatchSemaphore(value: 0)
+    stdoutQueue.async { done.signal() }
+    _ = done.wait(timeout: .now() + 1)
+}
 var calibration: Calibration?       // non-nil while the wizard runs: camera output and gesture events are dropped
 
 func log(_ text: String) {
     let t = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-    print("[\(t)] \(text)")
+    writeLine("[\(t)] \(text)")
 }
 
 /// Gesture detector → camera mask, mouse buttons and log. While the panic key has output off nothing is pressed.
@@ -61,23 +95,35 @@ func apply(_ events: [GestureEvent]) {
             if outputEnabled { output.move(dx: back.dx, dy: back.dy) }
         case .recognized(let name):
             switch name {
-            case .jerkDown: log("gesture: jerk down → LMB click"); showGesture("LMB click")
-            case .shake: log("gesture: shake → LMB held"); showGesture("shake")
+            case .jerkDown: log("gesture: jerk down → LMB click"); showGesture("LMB click", .jerkDown)
+            case .shake: log("gesture: shake → LMB held"); showGesture("shake", .shake)
             case .shakeEnd: log("gesture: shake ended → LMB released")
-            case .jerkUp: log("gesture: jerk up → RMB click"); showGesture("RMB click")
-            case .pull: showGesture("pull"); log(output.rightDown ? "gesture: pull, RMB already held → no action" : "gesture: pull → RMB held")
-            case .bowShot: log("gesture: jerk up with RMB held → shot, RMB released"); showGesture("shot")
-            case .twist: break      // logged with its direction on the scroll action
-            case .veto: showGesture("vetoed"); log("gesture: sharp motion without a calm pause before it → vetoed, the camera did not move")
+            case .jerkUp: log("gesture: jerk up → RMB click"); showGesture("RMB click", .jerkUp)
+            case .pull: showGesture("pull", .pull); log(output.rightDown ? "gesture: pull, RMB already held → no action" : "gesture: pull → RMB held")
+            case .bowShot: log("gesture: jerk up with RMB held → shot, RMB released"); showGesture("shot", .bowShot)
+            case .twist: break      // logged and sent with its direction on the scroll action
+            case .veto: showGesture("vetoed", .veto); log("gesture: sharp motion without a calm pause before it → vetoed, the camera did not move")
             }
         case .action(.pause):
             paused = true
+            send(.gesture(.pause))
             output.releaseAll()     // the detector already dropped its own state; the camera stays masked until .resume
             log("paused: the case lies still → all buttons released, camera off")
         case .action(.resume):
             paused = false
+            send(.gesture(.resume))
             camera.unmask(keepBand: false)      // the pick-up is not aim: nothing queued during the pause reaches the game
             log("resumed: the case is in hand → gestures and camera work again")
+        case .action(.scroll(let dir)):     // dir +1 = clockwise twist = "next slot"; the one place where the wheel sign is applied
+            showGesture(dir > 0 ? "slot +1" : "slot −1", dir > 0 ? .twistNext : .twistPrevious)
+            let turn = dir > 0 ? "clockwise" : "counterclockwise"
+            if outputEnabled {
+                let wheel = Int32(dir * camera.config.scrollNextSign)
+                output.scroll(wheel)
+                log("gesture: twist \(turn) → wheel \(wheel)")
+            } else {
+                log("gesture: twist \(turn) → output off, no wheel")
+            }
         case .action(let action):
             guard outputEnabled else { continue }
             switch action {
@@ -85,12 +131,7 @@ func apply(_ events: [GestureEvent]) {
             case .lmbUp: output.button(left: true, down: false)
             case .rmbDown: output.button(left: false, down: true)
             case .rmbUp: output.button(left: false, down: false)
-            case .scroll(let dir):      // dir +1 = clockwise twist = "next slot"; the one place where the wheel sign is applied
-                let wheel = Int32(dir * camera.config.scrollNextSign)
-                output.scroll(wheel)
-                showGesture(dir > 0 ? "slot +1" : "slot −1")
-                log("gesture: twist \(dir > 0 ? "clockwise" : "counterclockwise") → wheel \(wheel)")
-            case .pause, .resume: break
+            case .scroll, .pause, .resume: break
             }
         }
     }
@@ -125,12 +166,22 @@ func finishCalibration(_ axes: CalibrationAxes) {
     camera.unmask(keepBand: false)      // nothing queued while calibrating reaches the game
     session.recordCalibration(up: stored.up, forward: stored.forward)
     log(String(format: "calibration done: the forward axis turned %.0f° from the previous one", angleDegrees(axes.forward, old)))
+    send(.calibrated)
 }
 
-let trusted = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
-log("Accessibility: \(trusted ? "granted" : "NOT granted — allow it in Privacy & Security → Accessibility and restart")")
+/// A fatal problem: the UI shows the text, the engine exits nonzero.
+func fail(_ text: String) -> Never {
+    send(.error(text))
+    log(text)
+    flushLines()
+    exit(1)
+}
 
-session.onState = { log("session: \($0)") }
+// No prompt here: the UI asks for the permission, the engine only checks it.
+guard AXIsProcessTrusted() else { fail(engineErrorTextAccessibility) }
+log("Accessibility: granted")
+
+session.onState = { sessionText = $0; log("session: \($0)") }
 session.onSample = { sample in
     lastSampleArrival = uptimeNow()
     retriedNow = false
@@ -141,7 +192,7 @@ session.onSample = { sample in
     if streamLost { streamLost = false; log("stream restored") }
     let frame = camera.feed(sample)
     if let wizard = calibration {
-        for prompt in wizard.feed(sample) { log(prompt) }
+        for prompt in wizard.feed(sample) { log(prompt); send(.prompt(prompt)) }
         if let axes = wizard.axes { finishCalibration(axes) }
         return
     }
@@ -150,13 +201,14 @@ session.onSample = { sample in
 // A dropped stream reconnects by itself (buttons released, camera without input meanwhile; same calibration after).
 var retriedNow = false      // one immediate retry per drop; reset by the first sample of a working stream
 var everStreamed = false
-session.onEnded = { status, requested in
+session.onEnded = { status, requested, reason in
     abortGestures()
     let code = status.map(String.init) ?? "none"
     switch reconnectAction(status: status, requested: requested, streamed: everStreamed) {
     case .exit:
         log("session ended, helper exit code \(code). Quitting.")
-        exit(0)
+        if requested { flushLines(); exit(0) }
+        fail(engineErrorText(reason))
     case .retryNow where !retriedNow:
         retriedNow = true
         reconnecting = true
@@ -170,12 +222,16 @@ session.onEnded = { status, requested in
     }
 }
 
-// Panic hotkey ⌃⌥Space: release everything and stop output; press again to resume.
-let panicKey = HotKey(keyCode: kVK_Space, modifiers: controlKey | optionKey) {
-    outputEnabled.toggle()
+/// The panic key's effect, also set explicitly by the UI's "output on" / "output off".
+func setOutput(_ on: Bool) {
+    guard on != outputEnabled else { return }
+    outputEnabled = on
     abortGestures()
     log(outputEnabled ? "output ON" : "output OFF (panic key): all buttons released")
 }
+
+// Panic hotkey ⌃⌥Space: release everything and stop output; press again to resume.
+let panicKey = HotKey(keyCode: kVK_Space, modifiers: controlKey | optionKey) { setOutput(!outputEnabled) }
 if panicKey == nil { log("WARNING: could not register the panic key ⌃⌥Space") }
 
 // Calibration hotkey ⌃⌥C: run the wizard again (a different grip).
@@ -188,10 +244,10 @@ let watcher = ConfigWatcher { config in
     log("settings reloaded")
 }
 
-signal(SIGPIPE, SIG_IGN)            // a dead indicator child must not kill MinePointer through its pipe
-let indicator = camera.config.indicator ? Indicator() : nil
-func indicatorState() -> IndicatorState {
-    var s = IndicatorState()
+func engineState() -> EngineState {
+    var s = EngineState()
+    s.session = sessionText
+    s.output = outputEnabled
     s.left = output.leftDown
     s.right = output.rightDown
     s.mode = calibration != nil ? "calibrating" : !outputEnabled ? "output off" : reconnecting ? "reconnecting"
@@ -205,6 +261,7 @@ func indicatorState() -> IndicatorState {
 let outputTimer = DispatchSource.makeTimerSource(queue: .main)
 outputTimer.schedule(deadline: .now(), repeating: .nanoseconds(1_000_000_000 / 240), leeway: .microseconds(500))
 var lastTickAt = 0.0
+var lastSentState: EngineState?
 outputTimer.setEventHandler {
     let now = uptimeNow()
     if lastTickAt > 0, now - lastTickAt > 0.02 { output.note("tick_gap", ms: (now - lastTickAt) * 1000) }   // trace only: main thread stalls
@@ -212,7 +269,8 @@ outputTimer.setEventHandler {
     let (dx, dy) = camera.tick(now: now)
     if outputEnabled { output.move(dx: dx, dy: dy) }
     if calibration == nil { apply(detector.tick(now: now)) }
-    indicator?.send(indicatorState())
+    let state = engineState()
+    if state != lastSentState { lastSentState = state; send(.state(state)) }
     if lastSampleArrival > 0, !streamLost, now - lastSampleArrival > camera.config.streamLossMs / 1000 {
         streamLost = true
         abortGestures()
@@ -221,20 +279,42 @@ outputTimer.setEventHandler {
 }
 outputTimer.resume()
 
-// Ctrl-C / kill: release buttons, let the helper clean up, quit.
+// Ctrl-C / kill / the "quit" command / the UI's end of stdin: release buttons, let the helper clean up, quit.
+func quit() -> Never {
+    output.releaseAll()
+    log("stopping…")
+    session.shutdown()
+    flushLines()
+    exit(0)
+}
 var signalSources: [DispatchSourceSignal] = []
 for sig in [SIGINT, SIGTERM, SIGHUP] {
     signal(sig, SIG_IGN)
     let src = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-    src.setEventHandler {
-        output.releaseAll()
-        log("stopping…")
-        session.shutdown()
-        exit(0)
-    }
+    src.setEventHandler { quit() }
     src.resume()
     signalSources.append(src)
 }
+
+// Commands from the UI, one per line on stdin (a terminal works too). EOF means the UI is gone: quit, so no button stays held.
+var commandSplitter = LineSplitter()
+let commandSource = DispatchSource.makeReadSource(fileDescriptor: STDIN_FILENO, queue: .main)
+commandSource.setEventHandler {
+    var bytes = [UInt8](repeating: 0, count: 4096)
+    let count = read(STDIN_FILENO, &bytes, bytes.count)
+    if count == 0 { log("stdin closed"); quit() }
+    guard count > 0 else { return }
+    for line in commandSplitter.feed(Data(bytes.prefix(count))) {
+        switch EngineCommand(rawValue: line.trimmingCharacters(in: .whitespaces)) {
+        case .recalibrate?: startCalibration()
+        case .outputOn?: setOutput(true)
+        case .outputOff?: setOutput(false)
+        case .quit?: quit()
+        case nil: log("unknown command: \(line)")
+        }
+    }
+}
+commandSource.resume()
 
 log("MinePointer: grip calibration starts once the stream runs. Panic key: ⌃⌥Space, recalibrate: ⌃⌥C. Settings: \(configURL.path)")
 startCalibration()

@@ -1,8 +1,18 @@
 import Foundation
 
-let projectRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Projects/MinePointer", isDirectory: true)
-let logsFolder = projectRoot.appendingPathComponent("logs", isDirectory: true)
-let configURL = projectRoot.appendingPathComponent("config.json")
+/// Where config.json and the logs live: under MINEPOINTER_DIR when set (the developer workflow: replay, tools/record.py),
+/// otherwise in the user's Library folders.
+func dataLocations(environment: [String: String], home: URL) -> (config: URL, logs: URL) {
+    if let dir = environment["MINEPOINTER_DIR"], !dir.isEmpty {
+        let root = URL(fileURLWithPath: dir, isDirectory: true)
+        return (root.appendingPathComponent("config.json"), root.appendingPathComponent("logs", isDirectory: true))
+    }
+    return (home.appendingPathComponent("Library/Application Support/MinePointer/config.json"),
+            home.appendingPathComponent("Library/Logs/MinePointer", isDirectory: true))
+}
+private let locations = dataLocations(environment: ProcessInfo.processInfo.environment, home: URL(fileURLWithPath: NSHomeDirectory()))
+let logsFolder = locations.logs
+let configURL = locations.config
 
 func uptimeNow() -> Double { ProcessInfo.processInfo.systemUptime }
 
@@ -99,7 +109,8 @@ struct Config: Codable, Equatable {
     var pauseStillMs = 1000.0          // ... and calm this long pauses everything
     var resumeTiltDeg = 35.0           // pause ends when the up axis is within this of neutralUp ...
     var resumeMs = 300.0               // ... for this long
-    var indicator = false              // the on-screen panel (held buttons, last gesture, mode); off by default, read at start
+    var indicator = false              // the on-screen panel (held buttons, last gesture, mode), shown by the UI app; off by default
+    var recordSessions = false         // keep the raw helper recording (logs/helper-*.txt and .meta) for replay; off by default, read at session start
 
     /// Mouse counts per camera degree, from Minecraft's formula deg/count = (0.6 s + 0.2)^3 · 1.2 (UNVERIFIED for 26.3).
     var countsPerDegree: Double { 1 / (pow(0.6 * mcSensitivity + 0.2, 3) * 1.2) }
@@ -123,6 +134,7 @@ struct Config: Codable, Equatable {
     /// Writes the defaults so the user has a file to edit.
     static func writeDefaultsIfMissing(to url: URL = configURL) {
         guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let enc = JSONEncoder(); enc.keyEncodingStrategy = .convertToSnakeCase
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try? enc.encode(Config()).write(to: url)
@@ -145,5 +157,12 @@ func typesSelfTest() {
     precondition(c2.scrollNextSign == 1 && c2.twistPeakDps == 300 && c2.pauseStillMs == 1000, "pull and twist keys not read from config.json")
     precondition(abs(Config().countsPerDegree - 15.19) < 0.05)
     try? FileManager.default.removeItem(at: tmp)
-    print("PASS: types, helper row parsing, config merge")
+    let home = URL(fileURLWithPath: "/Users/someone")
+    let dev = dataLocations(environment: ["MINEPOINTER_DIR": "/work/mp"], home: home)
+    precondition(dev.config.path == "/work/mp/config.json" && dev.logs.path == "/work/mp/logs", "MINEPOINTER_DIR selects the project folder")
+    let installed = dataLocations(environment: [:], home: home)
+    precondition(installed.config.path == "/Users/someone/Library/Application Support/MinePointer/config.json" && installed.logs.path == "/Users/someone/Library/Logs/MinePointer")
+    precondition(dataLocations(environment: ["MINEPOINTER_DIR": ""], home: home).config == installed.config, "an empty MINEPOINTER_DIR is unset")
+    precondition(!Config().recordSessions && !c2.recordSessions)
+    print("PASS: types, helper row parsing, config merge, data locations")
 }

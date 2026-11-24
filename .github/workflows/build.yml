@@ -9,7 +9,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run the self-test
-        run: ./build-minepointer.sh
+      - name: Build, run the self-test and make the DMG
+        run: ./package-minepointer.sh
         env:
           MINEPOINTER_SIGNING_IDENTITY: "-"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MinePointer-dmg
+          path: build/MinePointer-*.dmg

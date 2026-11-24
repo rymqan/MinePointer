@@ -29,42 +29,64 @@ Hold the closed case in your right hand.
 | <kbd>⌃⌥Space</kbd> | Panic: release all buttons and stop output |
 | <kbd>⌃⌥C</kbd> | Recalibrate |
 
-At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly.
+At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly. The steps show in a small panel at the top right of the screen.
 
 The AirPods firmware ends the stream after about 30 minutes. Open and close the case lid to start a new session; MinePointer reconnects on its own.
 
+## Install
+
+1. Download `MinePointer-<version>.dmg` (or build it, see below), open it and drag MinePointer to Applications.
+2. Open MinePointer. The DMG is signed but not notarized, so macOS blocks the first launch: open System Settings → Privacy & Security, scroll to the message about MinePointer and click **Open Anyway**. This is needed once.
+3. The setup window walks you through the rest: Bluetooth and Accessibility permissions (Input Monitoring is optional), choosing your AirPods, connecting the case, the grip calibration and a short gesture check. MinePointer does not move the cursor or click during setup.
+
+MinePointer then lives in the menu bar: start and stop, recalibrate, output on and off, the on-screen indicator, Settings (camera speed, Minecraft sensitivity, gesture thresholds, scroll direction, launch at login) and the logs folder.
+
+Requirements: macOS 14 or later on Apple Silicon, AirPods paired with the Mac, Minecraft Java Edition.
+
+Close keyboard-layout switchers that use event taps while playing: they can swallow key-ups and leave movement keys stuck.
+
+### Uninstall
+
+Quit MinePointer from its menu, delete it from Applications, then remove its data and permissions:
+
+```sh
+rm -rf ~/Library/Application\ Support/MinePointer ~/Library/Logs/MinePointer
+tccutil reset All io.github.rymqan.MinePointer
+```
+
+AirPointer's helper keeps the chosen AirPods and its own state in `~/Library/Application Support/AirPointer/`, shared with AirPointer itself. Delete that folder too unless you also use AirPointer.
+
 ## Build
 
-Requirements: macOS 14 or later, Xcode command line tools, AirPods paired with the Mac.
-
-The project must live at `~/Projects/MinePointer`: the app reads `config.json` and writes `logs/` there.
+Requirements: Xcode command line tools.
 
 ```sh
-git clone https://github.com/rymqan/MinePointer.git ~/Projects/MinePointer
-cd ~/Projects/MinePointer
-./build-minepointer.sh
+git clone https://github.com/rymqan/MinePointer.git
+cd MinePointer
+./build-minepointer.sh        # build/MinePointer.app, signed, plus the offline self-test
+./package-minepointer.sh      # build/MinePointer-<version>.dmg, with signature and bundle checks
 ```
 
-`build-minepointer.sh` compiles MinePointer and AirPointer's helpers into `build/MinePointer.app`, signs them and runs the offline self-test. It signs with the "Apple Development" identity by default. Set `MINEPOINTER_SIGNING_IDENTITY=-` to sign ad hoc; macOS then asks for the permissions again after every build.
+Both sign with the "Apple Development" identity by default; a stable identity keeps the permissions across builds. `MINEPOINTER_SIGNING_IDENTITY=-` signs ad hoc (macOS then asks for the permissions again after every build). With a Developer ID identity and `MINEPOINTER_NOTARY_PROFILE=<notarytool keychain profile>`, `package-minepointer.sh` also notarizes and staples the DMG. The version is in `Packaging/VERSION`.
 
-## Run
+## How it works
 
-```sh
-build/MinePointer.app/Contents/MacOS/MinePointer
-```
+One app, two processes. `MinePointer` is the menu bar app (AppKit). It runs `MinePointer --engine` as a child: the camera, gesture detector and mouse output, at 240 Hz on a plain run loop. The engine is not an app on purpose: macOS wakes a background app only every ~100 ms while a fullscreen game is in front, which makes the camera choppy. The two talk in lines over the engine's stdin and stdout (`Sources/MinePointer/EngineLink.swift`); the engine releases every mouse button and quits when the app goes away, and the app releases the buttons if the engine crashes.
 
-On first run, grant Bluetooth, Accessibility and Input Monitoring in System Settings. Close keyboard-layout switchers that use event taps while playing: they can swallow key-ups and leave movement keys stuck.
+Files:
 
-Other modes:
+- Settings: `~/Library/Application Support/MinePointer/config.json`. Every tunable is a snake_case key; missing keys fall back to the defaults in `Sources/MinePointer/Types.swift`, and changes apply while playing. The calibration rewrites `neutral_up` and `forward_axis` at every start. `mc_sensitivity` must match Minecraft's mouse sensitivity slider (60% = 0.3).
+- Logs: `~/Library/Logs/MinePointer/` (`engine.log`; raw sensor recordings `helper-*.txt` only with `"record_sessions": true`).
 
+## Development
+
+- `MINEPOINTER_DIR=<folder>` puts the config at `<folder>/config.json` and the logs in `<folder>/logs`, e.g. the repository itself for the recording and replay tools.
+- `build/MinePointer.app/Contents/MacOS/MinePointer --engine` runs the engine alone in a terminal (commands on stdin: `recalibrate`, `output on`, `output off`, `quit`).
+- `MINEPOINTER_ENGINE=tools/fake-engine.py` runs the app against a scripted fake engine; `MINEPOINTER_SETUP_STEP=<1-7>` opens the setup at a step.
 - `--self-test` runs the offline checks.
 - `--replay [take ...]` replays recorded sessions from `logs/` through the camera and gesture detector.
 - `--calibrate-log logs/helper-XXXX.txt` runs the calibration on a recorded log.
-- `MINEPOINTER_TRACE=1` writes a debugging trace to `logs/output-*.csv`: posted mouse moves and button events, the system-wide key presses (key codes, in every app), frontmost-app changes and timing notes. Do not share a trace you would not share as a keylog.
-
-## Configuration
-
-Every tunable lives in `config.json` in the project root (snake_case keys). Missing keys fall back to the defaults in `Sources/MinePointer/Types.swift`, and the file is reloaded while the app runs. The calibration rewrites `neutral_up` and `forward_axis` at every start. Set `mc_sensitivity` to match Minecraft's mouse sensitivity slider (60% = 0.3).
+- `MINEPOINTER_TRACE=1` (e.g. `open --env MINEPOINTER_TRACE=1 /Applications/MinePointer.app`) writes a debugging trace to `output-*.csv` in the logs folder: posted mouse moves and button events, the system-wide key presses (key codes, in every app), frontmost-app changes and timing notes. Do not share a trace you would not share as a keylog.
 
 ## Repository layout
 
@@ -72,10 +94,10 @@ This repository is a fork of AirPointer: its files stay where upstream keeps the
 
 | Path | Contents |
 |---|---|
-| `Sources/MinePointer` | MinePointer |
-| `build-minepointer.sh` | Builds MinePointer |
+| `Sources/MinePointer` | MinePointer: the engine, and the app in `App/` |
+| `build-minepointer.sh`, `package-minepointer.sh`, `Packaging/` | Build, DMG, version and icon |
 | `tools/` | MinePointer's recording and log tools |
-| `Sources/AirPointer`, `Sources/ClosedCase*` | AirPointer; MinePointer compiles its helpers and `ClosedCaseAirPods.swift` |
+| `Sources/AirPointer`, `Sources/ClosedCase*` | AirPointer; MinePointer compiles its helpers, `ClosedCaseAirPods.swift`, `RemoteKit.swift` and `AccessibilityGuide.swift` |
 | `Assets/`, `Docs/`, `Scripts/`, `Tests/`, `build.sh` | AirPointer, unused by MinePointer |
 
 Apart from this README, `LICENSE` and `.gitignore`, AirPointer's files are unmodified; AirPointer's own README is [upstream](https://github.com/oscarcreatess/airpointer).

@@ -7,7 +7,7 @@ MinePointer includes the third-party software listed below. Each part keeps its 
 - Location: this repository is a fork of AirPointer with its full history; AirPointer's files are `Sources/AirPointer`, `Sources/ClosedCaseMotion`, `Sources/ClosedCaseRestore`, `Assets/`, `Docs/`, `Scripts/`, `Tests/` and `build.sh`.
 - Source: https://github.com/oscarcreatess/airpointer, commit `5dd3a417e4e7b08f4ad64368a56e600f118d0cb3`.
 - Modifications: `README.md` is replaced by MinePointer's README (AirPointer's is upstream), `LICENSE` adds MinePointer's copyright line, and `.gitignore` adds MinePointer's entries. AirPointer's code is unmodified.
-- What MinePointer uses: `build-minepointer.sh` compiles `Sources/ClosedCaseMotion/CaseSustainedRenewal.m`, `Sources/ClosedCaseRestore/ClosedCaseRestore.swift` and `Sources/AirPointer/Session/ClosedCaseAirPods.swift` into the app. `Sources/MinePointer/CaseSession.swift` contains three functions copied from `Sources/AirPointer/Session/ClosedCaseSession.swift`; each is marked in the code.
+- What MinePointer uses: `build-minepointer.sh` compiles `Sources/ClosedCaseMotion/CaseSustainedRenewal.m`, `Sources/ClosedCaseRestore/ClosedCaseRestore.swift` `Sources/AirPointer/Session/ClosedCaseAirPods.swift`, `Sources/AirPointer/Interface/RemoteKit.swift` (the design toolkit of the setup and settings windows) and `Sources/AirPointer/Interface/AccessibilityGuide.swift` into the app, unmodified. `Sources/MinePointer/CaseSession.swift` contains three functions copied from `Sources/AirPointer/Session/ClosedCaseSession.swift`; each is marked in the code.
 - License: MIT.
 
 ```
@@ -65,3 +65,7 @@ SOFTWARE.
 ### AirPointer assets
 
 The MIT license above does not cover `Assets/`. It contains Apple's AirPods Pro 3 AR model, renders of it, and sounds that use parts from cuelume; see `Assets/LICENSE.md`. MinePointer does not build any of these assets into its app; they are in this repository only because it keeps AirPointer's tree unchanged.
+
+## MinePointer app icon
+
+The app icon (`Packaging/AppIcon.icns`) is MinePointer's own work, drawn by `Packaging/make-icon.swift` from an SF Symbol. It contains no AirPointer artwork and no Apple renders.
