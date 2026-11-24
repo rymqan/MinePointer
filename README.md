@@ -54,6 +54,8 @@ rm -rf ~/Library/Application\ Support/MinePointer ~/Library/Logs/MinePointer
 tccutil reset All io.github.rymqan.MinePointer
 ```
 
+AirPointer's helper keeps the chosen AirPods and its own state in `~/Library/Application Support/AirPointer/`, shared with AirPointer itself. Delete that folder too unless you also use AirPointer.
+
 ## Build
 
 Requirements: Xcode command line tools.
