@@ -50,12 +50,38 @@ var sessionText = ""                // the latest CaseSession state; for the UI
 var lastGesture = "", gestureSeq = 0
 /// The panel text and the "@gesture" line of a recognized gesture; sent also while output is off (the UI's gesture check).
 func showGesture(_ text: String, _ id: EngineGesture) { lastGesture = text; gestureSeq += 1; send(.gesture(id)) }
-func send(_ message: EngineMessage) { print(message.line) }
+func send(_ message: EngineMessage) { writeLine(message.line) }
+
+/// stdout is the UI's pipe, and the UI process is throttled while the game is in front (or may hang): lines go out on their own
+/// queue, so a full pipe never stalls the 240 Hz main thread that also releases the buttons. Past `maxPendingLines` waiting,
+/// new lines are dropped (the UI catches up with the next @state).
+let stdoutQueue = DispatchQueue(label: "minepointer.stdout")
+let pendingLock = NSLock()
+var pendingLines = 0
+let maxPendingLines = 1000
+func writeLine(_ line: String) {
+    pendingLock.lock()
+    let room = pendingLines < maxPendingLines
+    if room { pendingLines += 1 }
+    pendingLock.unlock()
+    guard room else { return }
+    stdoutQueue.async {
+        try? FileHandle.standardOutput.write(contentsOf: Data((line + "\n").utf8))      // fails (EPIPE) once the UI is gone
+        pendingLock.lock(); pendingLines -= 1; pendingLock.unlock()
+    }
+}
+
+/// Before exit: give the queued lines (an @error above all) up to a second to reach the UI.
+func flushLines() {
+    let done = DispatchSemaphore(value: 0)
+    stdoutQueue.async { done.signal() }
+    _ = done.wait(timeout: .now() + 1)
+}
 var calibration: Calibration?       // non-nil while the wizard runs: camera output and gesture events are dropped
 
 func log(_ text: String) {
     let t = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-    print("[\(t)] \(text)")
+    writeLine("[\(t)] \(text)")
 }
 
 /// Gesture detector → camera mask, mouse buttons and log. While the panic key has output off nothing is pressed.
@@ -147,6 +173,7 @@ func finishCalibration(_ axes: CalibrationAxes) {
 func fail(_ text: String) -> Never {
     send(.error(text))
     log(text)
+    flushLines()
     exit(1)
 }
 
@@ -180,7 +207,7 @@ session.onEnded = { status, requested, reason in
     switch reconnectAction(status: status, requested: requested, streamed: everStreamed) {
     case .exit:
         log("session ended, helper exit code \(code). Quitting.")
-        if requested { exit(0) }
+        if requested { flushLines(); exit(0) }
         fail(engineErrorText(reason))
     case .retryNow where !retriedNow:
         retriedNow = true
@@ -256,6 +283,7 @@ func quit() -> Never {
     output.releaseAll()
     log("stopping…")
     session.shutdown()
+    flushLines()
     exit(0)
 }
 var signalSources: [DispatchSourceSignal] = []

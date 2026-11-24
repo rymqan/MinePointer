@@ -77,8 +77,10 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             refreshSurvey()
         case .connect:
             // Setup must not move the cursor or click: output stays off until "Start playing".
+            // A fresh engine every time: a running one may stream from another pair, and it is calibrated already.
             supervisor.holdOutputOff = true
-            if supervisor.status == .running { supervisor.send(.outputOff) } else { supervisor.start() }
+            flow.prompt = nil; flow.calibrated = false; flow.lit = []
+            supervisor.stop { [weak self] in self?.supervisor.start() }
         default: break
         }
     }

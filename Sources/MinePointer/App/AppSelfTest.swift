@@ -55,8 +55,8 @@ func appSelfTest() {
     flow.step = .connect
     flow.apply(.state(EngineState(session: "connecting")))
     precondition(flow.step == .connect)
-    flow.apply(.state(EngineState(session: "streaming", mode: "calibrating")))
-    precondition(flow.step == .calibrate, "the calibrating mode leaves the connect step")
+    flow.apply(.state(EngineState(session: "waiting: open the case lid", mode: "calibrating")))
+    precondition(flow.step == .connect, "the engine calibrates from its start: only a prompt leaves the connect step")
     flow = SetupFlow(); flow.step = .connect
     flow.apply(.prompt("Calibration: hold the case still in your usual grip…"))
     precondition(flow.step == .calibrate && flow.prompt != nil)

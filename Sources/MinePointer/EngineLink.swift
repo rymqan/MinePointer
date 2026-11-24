@@ -90,12 +90,22 @@ func engineErrorText(_ reason: String) -> String {
     }
 }
 
-/// Read-merge-write of config.json for the settings window: sets the given snake_case keys and keeps every other key
-/// (the engine's calibration axes). The engine's ConfigWatcher picks the change up within a second.
+/// Read-merge-write of config.json, the one writer for both processes (the UI's settings, the engine's calibration): sets the
+/// given snake_case keys and keeps every other key. An exclusive lock on config.json.lock makes the two processes take turns,
+/// the atomic write means a reader never sees half a file, and a file that is there but unreadable is left alone (throws)
+/// rather than replaced by the changed keys alone. The engine's ConfigWatcher picks the change up within a second.
 func updateConfigFile(_ changes: [String: Any], at url: URL = configURL) throws {
-    var dict = ((try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-    dict.merge(changes) { _, new in new }
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let lock = open(url.path + ".lock", O_CREAT | O_RDWR, 0o644)
+    guard lock >= 0 else { throw CocoaError(.fileWriteUnknown) }
+    defer { close(lock) }       // closing releases the lock
+    flock(lock, LOCK_EX)
+    var dict: [String: Any] = [:]
+    if let data = try? Data(contentsOf: url) {
+        guard let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.fileReadCorruptFile) }
+        dict = existing
+    }
+    dict.merge(changes) { _, new in new }
     let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     try data.write(to: url, options: .atomic)
 }
@@ -121,6 +131,9 @@ func engineLinkSelfTest() {
     try! updateConfigFile(["gain": 2.5, "invert_y": true], at: tmp)
     let c = Config.load(from: tmp)
     precondition(c.gain == 2.5 && c.invertY && c.neutralUp == [0, 1, 0], "settings writes must keep the calibration keys")
+    try? "{\"gain\": 5".data(using: .utf8)!.write(to: tmp)
+    precondition((try? updateConfigFile(["gain": 1], at: tmp)) == nil, "an unreadable config.json must not be replaced")
+    try? FileManager.default.removeItem(at: URL(fileURLWithPath: tmp.path + ".lock"))
     try? FileManager.default.removeItem(at: tmp)
     print("PASS: engine link lines, config update")
 }

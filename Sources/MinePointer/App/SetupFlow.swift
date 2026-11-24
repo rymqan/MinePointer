@@ -49,12 +49,12 @@ struct SetupFlow: Equatable {
         return nil
     }
 
-    /// The engine's messages move the flow along: Connect → Calibrate on the first prompt or the calibrating mode,
+    /// The engine's messages move the flow along: Connect → Calibrate on the first prompt (not on the calibrating mode: the
+    /// engine is in it from its start, while it still waits for the lid),
     /// Calibrate → Gestures on @calibrated; @gesture lights tiles on the gesture step only.
     mutating func apply(_ message: EngineMessage) {
         switch message {
-        case .state(let state):
-            if step == .connect, state.mode == "calibrating" { step = .calibrate }
+        case .state: break
         case .prompt(let text):
             prompt = text
             if step == .connect { step = .calibrate }

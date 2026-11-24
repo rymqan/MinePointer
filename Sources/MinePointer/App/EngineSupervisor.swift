@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // Runs the engine (`MinePointer --engine`) as a child, parses its stdout (EngineLink.swift), keeps the log and decides
@@ -45,6 +46,8 @@ final class EngineSupervisor {
     private(set) var logLines: [String] = []
     /// While true the engine gets `output off` as soon as it runs (setup must not receive synthetic clicks).
     var holdOutputOff = false
+    /// The output state the person chose (menu, panic key, setup); an automatic restart gets it back before it can click.
+    private var outputOff = false
 
     private var observers: [(EngineEvent) -> Void] = []
     private var process: Process?
@@ -85,6 +88,7 @@ final class EngineSupervisor {
             return
         }
         restarts = []
+        outputOff = false
         launch()
     }
 
@@ -113,7 +117,7 @@ final class EngineSupervisor {
         try? stdout.fileHandleForWriting.close(); try? stdin.fileHandleForReading.close()
         note("engine started (pid \(child.processIdentifier))")
         setStatus(.running)
-        if holdOutputOff { send(.outputOff); sentOutputOff = true }
+        if holdOutputOff || outputOff { send(.outputOff); sentOutputOff = true }
         let reader = stdout.fileHandleForReading
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var splitter = LineSplitter()
@@ -153,14 +157,17 @@ final class EngineSupervisor {
             guard let self, mine == generation, process === child, child.isRunning else { return }
             note("engine did not quit, terminating")
             child.terminate()
+            // A suspended or stuck engine cannot run its SIGTERM handler: kill it; exited() then releases the buttons and completes.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                guard let self, mine == generation, process != nil else { return }
-                finishStop()
+                guard let self, mine == generation, process === child, child.isRunning else { return }
+                note("engine did not terminate, killing it")
+                kill(child.processIdentifier, SIGKILL)
             }
         }
     }
 
     func send(_ command: EngineCommand) {
+        if command == .outputOff { outputOff = true } else if command == .outputOn { outputOff = false }
         guard let input else { return }
         if (try? input.write(contentsOf: Data((command.rawValue + "\n").utf8))) == nil { note("could not send '\(command.rawValue)'") }
     }
@@ -174,7 +181,9 @@ final class EngineSupervisor {
             switch message {
             case .state(let next):
                 state = next
-                if holdOutputOff, !sentOutputOff { send(.outputOff); sentOutputOff = true }
+                // The panic key changes output inside the engine; "calibrating" hides the output mode, so it leaves it as it was.
+                if next.mode == "output off" { outputOff = true } else if next.mode != "calibrating" { outputOff = false }
+                if holdOutputOff || outputOff, !sentOutputOff { send(.outputOff); sentOutputOff = true }
             case .error(let text): sawError = text; note("engine error: \(text)")
             case .log(let text): appendLog(text)
             default: break
@@ -186,6 +195,7 @@ final class EngineSupervisor {
     private func exited(_ child: Process, generation mine: Int) {
         guard mine == generation, process === child else { return }        // the other of the two exit paths already ran
         process = nil; input = nil; pipes = []
+        releaseButtons()
         let now = uptimeNow()
         let action = engineExitAction(requested: requested, error: sawError, restarts: restarts, now: now)
         note("engine exited (status \(child.terminationStatus)): \(action)")
@@ -201,6 +211,15 @@ final class EngineSupervisor {
         }
         finishStop()
         if startWhenStopped { startWhenStopped = false; start() }
+    }
+
+    /// Mouse-ups for both buttons from the UI process (same bundle, same Accessibility grant): a crashed or killed engine
+    /// cannot release what it held, and the next engine starts believing nothing is held. A stray mouse-up is harmless.
+    private func releaseButtons() {
+        let at = CGEvent(source: nil)?.location ?? .zero
+        for (type, button) in [(CGEventType.leftMouseUp, CGMouseButton.left), (.rightMouseUp, .right)] {
+            CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: button)?.post(tap: .cghidEventTap)
+        }
     }
 
     private func finishStop() {
