@@ -74,6 +74,22 @@ enum EngineCommand: String {
     case quit
 }
 
+let engineErrorTextAccessibility = "Accessibility is not granted: allow MinePointer in System Settings → Privacy & Security → Accessibility"
+
+/// The `@error` text for a session that ended: CaseSession's reason plus what to do next. AirPointer's own failure texts already say it.
+func engineErrorText(_ reason: String) -> String {
+    switch reason {
+    case ClosedCaseAirPods.bluetoothDenied: return "Bluetooth is not granted: allow MinePointer in System Settings → Privacy & Security → Bluetooth and try again"
+    case "AirPods not found": return "AirPods not found: pair them in Bluetooth settings and try again"
+    case "AirPods Pro 1 are not supported": return reason + ": use AirPods 4 or another supported model and try again"
+    case "could not save the AirPods choice": return reason + ": check the disk space and try again"
+    case "the lid was not opened within 120 s": return reason + ": open the case lid and start again"
+    case "stopped", "AirPods disconnected": return "The AirPods stream ended (\(reason)): open and close the case lid and start again"
+    case let r where r.hasSuffix("is missing from the app bundle"): return reason + ": reinstall MinePointer"
+    default: return reason
+    }
+}
+
 /// Read-merge-write of config.json for the settings window: sets the given snake_case keys and keeps every other key
 /// (the engine's calibration axes). The engine's ConfigWatcher picks the change up within a second.
 func updateConfigFile(_ changes: [String: Any], at url: URL = configURL) throws {
@@ -95,7 +111,11 @@ func engineLinkSelfTest() {
     precondition(EngineMessage(line: "@gesture\tnope") == .log("@gesture\tnope"))
     precondition(EngineMessage(line: "@state\tx") == .log("@state\tx") && EngineMessage(line: "[12:00] hello") == .log("[12:00] hello"))
     precondition(EngineMessage(line: "@calibrated") == .calibrated && EngineMessage(line: "@error\tno AirPods") == .error("no AirPods"))
-    precondition(EngineCommand(rawValue: "output off") == .outputOff)
+    precondition(EngineCommand(rawValue: "output off") == .outputOff && EngineCommand(rawValue: "quit") == .quit && EngineCommand(rawValue: "nope") == nil)
+    precondition(engineErrorText("AirPods not found").hasPrefix("AirPods not found: pair them"))
+    precondition(engineErrorText(ClosedCaseAirPods.bluetoothDenied).contains("Privacy & Security → Bluetooth"))
+    precondition(engineErrorText("ClosedCaseMotion is missing from the app bundle").hasSuffix("reinstall MinePointer"))
+    precondition(engineErrorText("Your AirPods didn’t answer. Connect again.") == "Your AirPods didn’t answer. Connect again.")
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("minepointer-link-test.json")
     try? #"{"gain": 5, "neutral_up": [0, 1, 0]}"#.data(using: .utf8)!.write(to: tmp)
     try! updateConfigFile(["gain": 2.5, "invert_y": true], at: tmp)

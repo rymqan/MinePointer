@@ -121,10 +121,11 @@ private func appendingHandle(_ url: URL) -> FileHandle? {
 final class CaseSession {
     var onSample: ((MotionSample) -> Void)?   // main thread, in arrival order
     var onState: ((String) -> Void)?          // short English state
-    var onEnded: ((Int32?, Bool) -> Void)?    // helper exit status (nil if it never started) and whether shutdown() (app quit) asked to stop, after cleanup
+    var onEnded: ((Int32?, Bool, String) -> Void)?    // helper exit status (nil if it never started), whether shutdown() (app quit) asked to stop, and the failure reason; after cleanup
 
     static let sessionsFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("MinePointer/sessions", isDirectory: true)
+    static let helpersFolder = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true)
     static let keptSessions = 5
     static let maxBusyRetries = 3
 
@@ -185,7 +186,6 @@ final class CaseSession {
         bluetooth.request { [weak self] allowed in
             guard let self, self.active, self.token == current else { return }
             guard allowed else {
-                if let url = ClosedCaseBluetoothAccess.settings { NSWorkspace.shared.open(url) }
                 self.finish(ClosedCaseAirPods.bluetoothDenied, status: nil)
                 return
             }
@@ -245,8 +245,9 @@ final class CaseSession {
 
     /// Creates the session folder and runs ClosedCaseRestore.bin; its success starts the helper.
     private func launch() {
-        guard let restoreExecutable = Bundle.main.url(forResource: "ClosedCaseRestore", withExtension: "bin") else {
-            finish("ClosedCaseRestore.bin is missing from the build", status: nil)
+        let restoreExecutable = Self.helpersFolder.appendingPathComponent("ClosedCaseRestore")
+        guard FileManager.default.isExecutableFile(atPath: restoreExecutable.path) else {
+            finish("ClosedCaseRestore is missing from the app bundle", status: nil)
             return
         }
         emit("connecting")
@@ -302,9 +303,9 @@ final class CaseSession {
     }
 
     private func launchHelper() {
-        guard let executable = Bundle.main.url(forResource: "ClosedCaseMotion", withExtension: "bin"),
-              let capture else {
-            finish("ClosedCaseMotion.bin is missing from the build", status: nil)
+        let executable = Self.helpersFolder.appendingPathComponent("ClosedCaseMotion")
+        guard FileManager.default.isExecutableFile(atPath: executable.path), let capture else {
+            finish("ClosedCaseMotion is missing from the app bundle", status: nil)
             return
         }
         let arguments = [target.path, "--pointer-session", capture.path]
@@ -340,8 +341,9 @@ final class CaseSession {
         }
     }
 
-    /// logs/helper-YYYYmmdd-HHMMSS.txt and .meta, in the format tools/helper-logger.zsh wrote.
+    /// logs/helper-YYYYmmdd-HHMMSS.txt and .meta, in the format tools/helper-logger.zsh wrote. Only with record_sessions on.
     private func openHelperLog(arguments: [String]) {
+        guard Config.load().recordSessions else { return }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -555,7 +557,7 @@ final class CaseSession {
         confirmed = false
         lastState = ""
         emit("session ended: \(reason)")
-        onEnded?(status, requested)
+        onEnded?(status, requested, reason)
     }
 
     // MARK: Stop

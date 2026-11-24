@@ -11,6 +11,7 @@ final class MouseOutput {
     private let trace: FileHandle? = {
         guard ProcessInfo.processInfo.environment["MINEPOINTER_TRACE"] == "1" else { return nil }
         let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"
+        try? FileManager.default.createDirectory(at: logsFolder, withIntermediateDirectories: true)
         let url = logsFolder.appendingPathComponent("output-\(f.string(from: Date())).csv")
         FileManager.default.createFile(atPath: url.path, contents: Data("uptime,kind,dx,dy,cursor_x,cursor_y,posted_x,posted_y\n".utf8))
         return try? FileHandle(forWritingTo: url)
