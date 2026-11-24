@@ -1,0 +1,106 @@
+import Foundation
+
+// The link between the UI app and its engine child (`MinePointer --engine`): one line per message.
+// Engine → UI on the child's stdout: "@state", "@prompt", "@gesture", "@calibrated", "@error" lines, tab-separated; any other line
+// is a log line. UI → engine on the child's stdin: EngineCommand raw values. The engine quits (all buttons released) on stdin EOF.
+
+/// What the UI shows: the session text, the mode and the held buttons, the last gesture (a new seq shows it again).
+struct EngineState: Equatable {
+    var session = ""        // CaseSession's short state ("waiting: open the case lid", "streaming", ...)
+    var mode = ""           // "" while playing; otherwise calibrating, output off, reconnecting, no stream, paused
+    var left = false, right = false
+    var gesture = ""        // the last recognized gesture, for the panel
+    var seq = 0
+
+    /// The indicator panel text: mode · held buttons · recent gesture, or a dot while idle.
+    func text(showGesture: Bool) -> String {
+        var parts: [String] = []
+        if !mode.isEmpty { parts.append(mode) }
+        let held = [left ? "LMB" : nil, right ? "RMB" : nil].compactMap { $0 }
+        if !held.isEmpty { parts.append(held.joined(separator: "+")) }
+        if showGesture, !gesture.isEmpty { parts.append(gesture) }
+        return parts.isEmpty ? "●" : parts.joined(separator: " · ")
+    }
+}
+
+/// Gesture ids in "@gesture" lines, for the setup window's gesture check.
+enum EngineGesture: String, CaseIterable {
+    case jerkDown, shake, jerkUp, pull, bowShot, twistNext, twistPrevious, veto, pause, resume
+}
+
+enum EngineMessage: Equatable {
+    case state(EngineState)
+    case prompt(String)                 // a calibration step to show large
+    case gesture(EngineGesture)
+    case calibrated
+    case error(String)                  // fatal: the engine exits after it; the text names the cause and the next step
+    case log(String)
+
+    init(line: String) {
+        let p = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        switch p[0] {
+        case "@state" where p.count == 7:
+            guard let seq = Int(p[6]) else { self = .log(line); return }
+            self = .state(EngineState(session: p[1], mode: p[2], left: p[3] == "1", right: p[4] == "1", gesture: p[5], seq: seq))
+        case "@prompt" where p.count == 2: self = .prompt(p[1])
+        case "@gesture" where p.count == 2:
+            guard let g = EngineGesture(rawValue: p[1]) else { self = .log(line); return }
+            self = .gesture(g)
+        case "@calibrated" where p.count == 1: self = .calibrated
+        case "@error" where p.count == 2: self = .error(p[1])
+        default: self = .log(line)
+        }
+    }
+
+    var line: String {
+        func clean(_ s: String) -> String { s.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ") }
+        switch self {
+        case .state(let s):
+            return ["@state", clean(s.session), clean(s.mode), s.left ? "1" : "0", s.right ? "1" : "0", clean(s.gesture), String(s.seq)]
+                .joined(separator: "\t")
+        case .prompt(let text): return "@prompt\t" + clean(text)
+        case .gesture(let g): return "@gesture\t" + g.rawValue
+        case .calibrated: return "@calibrated"
+        case .error(let text): return "@error\t" + clean(text)
+        case .log(let text): return clean(text)
+        }
+    }
+}
+
+enum EngineCommand: String {
+    case recalibrate
+    case outputOn = "output on"
+    case outputOff = "output off"
+    case quit
+}
+
+/// Read-merge-write of config.json for the settings window: sets the given snake_case keys and keeps every other key
+/// (the engine's calibration axes). The engine's ConfigWatcher picks the change up within a second.
+func updateConfigFile(_ changes: [String: Any], at url: URL = configURL) throws {
+    var dict = ((try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+    dict.merge(changes) { _, new in new }
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    try data.write(to: url, options: .atomic)
+}
+
+func engineLinkSelfTest() {
+    var s = EngineState(session: "streaming", mode: "paused", left: true, right: false, gesture: "LMB click", seq: 7)
+    precondition(EngineMessage(line: EngineMessage.state(s).line) == .state(s), "state round trip")
+    precondition(s.text(showGesture: true) == "paused · LMB · LMB click" && s.text(showGesture: false) == "paused · LMB")
+    s.right = true; s.mode = ""
+    precondition(s.text(showGesture: false) == "LMB+RMB" && EngineState().text(showGesture: true) == "●")
+    precondition(EngineMessage(line: EngineMessage.prompt("a\tb").line) == .prompt("a b"), "tabs in text must not split the line")
+    precondition(EngineMessage(line: "@gesture\ttwistNext") == .gesture(.twistNext))
+    precondition(EngineMessage(line: "@gesture\tnope") == .log("@gesture\tnope"))
+    precondition(EngineMessage(line: "@state\tx") == .log("@state\tx") && EngineMessage(line: "[12:00] hello") == .log("[12:00] hello"))
+    precondition(EngineMessage(line: "@calibrated") == .calibrated && EngineMessage(line: "@error\tno AirPods") == .error("no AirPods"))
+    precondition(EngineCommand(rawValue: "output off") == .outputOff)
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("minepointer-link-test.json")
+    try? #"{"gain": 5, "neutral_up": [0, 1, 0]}"#.data(using: .utf8)!.write(to: tmp)
+    try! updateConfigFile(["gain": 2.5, "invert_y": true], at: tmp)
+    let c = Config.load(from: tmp)
+    precondition(c.gain == 2.5 && c.invertY && c.neutralUp == [0, 1, 0], "settings writes must keep the calibration keys")
+    try? FileManager.default.removeItem(at: tmp)
+    print("PASS: engine link lines, config update")
+}

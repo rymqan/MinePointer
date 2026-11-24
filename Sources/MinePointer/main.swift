@@ -11,6 +11,7 @@ if arguments.first == "--self-test" {
     gestureSelfTest()
     calibrationSelfTest()
     indicatorSelfTest()
+    engineLinkSelfTest()
     exit(0)
 }
 if arguments.first == "--calibrate-log", arguments.count > 1 {     // steps 1-2 of the wizard on a helper log
