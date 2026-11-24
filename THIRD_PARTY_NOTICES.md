@@ -7,7 +7,7 @@ MinePointer includes the third-party software listed below. Each part keeps its 
 - Location: this repository is a fork of AirPointer with its full history; AirPointer's files are `Sources/AirPointer`, `Sources/ClosedCaseMotion`, `Sources/ClosedCaseRestore`, `Assets/`, `Docs/`, `Scripts/`, `Tests/` and `build.sh`.
 - Source: https://github.com/oscarcreatess/airpointer, commit `5dd3a417e4e7b08f4ad64368a56e600f118d0cb3`.
 - Modifications: `README.md` is replaced by MinePointer's README (AirPointer's is upstream), `LICENSE` adds MinePointer's copyright line, and `.gitignore` adds MinePointer's entries. AirPointer's code is unmodified.
-- What MinePointer uses: `build-minepointer.sh` compiles `Sources/ClosedCaseMotion/CaseSustainedRenewal.m`, `Sources/ClosedCaseRestore/ClosedCaseRestore.swift` and `Sources/AirPointer/Session/ClosedCaseAirPods.swift` into the app. `Sources/MinePointer/CaseSession.swift` contains three functions copied from `Sources/AirPointer/Session/ClosedCaseSession.swift`; each is marked in the code.
+- What MinePointer uses: `build-minepointer.sh` compiles `Sources/ClosedCaseMotion/CaseSustainedRenewal.m`, `Sources/ClosedCaseRestore/ClosedCaseRestore.swift` `Sources/AirPointer/Session/ClosedCaseAirPods.swift`, `Sources/AirPointer/Interface/RemoteKit.swift` (the design toolkit of the setup and settings windows) and `Sources/AirPointer/Interface/AccessibilityGuide.swift` into the app, unmodified. `Sources/MinePointer/CaseSession.swift` contains three functions copied from `Sources/AirPointer/Session/ClosedCaseSession.swift`; each is marked in the code.
 - License: MIT.
 
 ```
