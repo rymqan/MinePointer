@@ -36,6 +36,7 @@ final class IndicatorPanel {
             if case .message(.state(let state)) = event, state.seq != shownSeq { shownSeq = state.seq; gestureUntil = uptimeNow() + gestureSeconds }
             if case .message(.prompt(let text)) = event { prompt = text }
             if case .message(.calibrated) = event { prompt = "" }
+            if case .status = event { prompt = "" }        // a new or stopped engine: the last one's step is stale
             refresh()
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -70,7 +71,7 @@ final class IndicatorPanel {
 
     private func render() {
         let state = supervisor.state
-        let text = calibrating && !prompt.isEmpty ? "calibrating · " + prompt
+        let text = calibrating ? "calibrating · " + (prompt.isEmpty ? SessionText.session(state.session) : prompt)     // before the stream: the lid step
             : state.mode == "reconnecting" ? SessionText.line(state)
             : state.text(showGesture: uptimeNow() < gestureUntil)
         guard text != label.stringValue else { return }

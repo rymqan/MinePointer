@@ -38,6 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Opening the app again (Finder, Spotlight, Launchpad) while it runs: a menu bar app has no window to bring back, and its
+    /// icon may sit behind the notch, so show Settings (or the setup while it is not done).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { UserDefaults.standard.bool(forKey: setupCompleteKey) ? showSettings() : showSetup() }
+        return true
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard supervisor.hasProcess else { return .terminateNow }
         supervisor.stop { NSApp.reply(toApplicationShouldTerminate: true) }
