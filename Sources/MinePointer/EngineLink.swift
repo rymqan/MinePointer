@@ -11,6 +11,7 @@ struct EngineState: Equatable {
     var left = false, right = false
     var gesture = ""        // the last recognized gesture, for the panel
     var seq = 0
+    var output = true       // the engine's own output switch (panic key, UI): reported apart from mode, which hides it while calibrating
 
     /// The indicator panel text: mode · held buttons · recent gesture, or a dot while idle.
     func text(showGesture: Bool) -> String {
@@ -39,9 +40,10 @@ enum EngineMessage: Equatable {
     init(line: String) {
         let p = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         switch p[0] {
-        case "@state" where p.count == 7:
+        case "@state" where p.count == 8:
             guard let seq = Int(p[6]) else { self = .log(line); return }
-            self = .state(EngineState(session: p[1], mode: p[2], left: p[3] == "1", right: p[4] == "1", gesture: p[5], seq: seq))
+            self = .state(EngineState(session: p[1], mode: p[2], left: p[3] == "1", right: p[4] == "1", gesture: p[5], seq: seq,
+                                      output: p[7] == "1"))
         case "@prompt" where p.count == 2: self = .prompt(p[1])
         case "@gesture" where p.count == 2:
             guard let g = EngineGesture(rawValue: p[1]) else { self = .log(line); return }
@@ -56,7 +58,7 @@ enum EngineMessage: Equatable {
         func clean(_ s: String) -> String { s.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ") }
         switch self {
         case .state(let s):
-            return ["@state", clean(s.session), clean(s.mode), s.left ? "1" : "0", s.right ? "1" : "0", clean(s.gesture), String(s.seq)]
+            return ["@state", clean(s.session), clean(s.mode), s.left ? "1" : "0", s.right ? "1" : "0", clean(s.gesture), String(s.seq), s.output ? "1" : "0"]
                 .joined(separator: "\t")
         case .prompt(let text): return "@prompt\t" + clean(text)
         case .gesture(let g): return "@gesture\t" + g.rawValue
@@ -113,6 +115,8 @@ func updateConfigFile(_ changes: [String: Any], at url: URL = configURL) throws 
 func engineLinkSelfTest() {
     var s = EngineState(session: "streaming", mode: "paused", left: true, right: false, gesture: "LMB click", seq: 7)
     precondition(EngineMessage(line: EngineMessage.state(s).line) == .state(s), "state round trip")
+    s.output = false
+    precondition(EngineMessage(line: EngineMessage.state(s).line) == .state(s), "output off round trip")
     precondition(s.text(showGesture: true) == "paused · LMB · LMB click" && s.text(showGesture: false) == "paused · LMB")
     s.right = true; s.mode = ""
     precondition(s.text(showGesture: false) == "LMB+RMB" && EngineState().text(showGesture: true) == "●")

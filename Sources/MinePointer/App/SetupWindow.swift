@@ -23,6 +23,8 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     private var poll: Timer?
     private var vetoHintUntil = 0.0
     private var finished = false
+    private var attempt = 0                 // bumped on every Connect and on leaving it: a restart scheduled for an old one does nothing
+    private var awaitingEngine = false      // until the fresh engine runs, the outgoing one's messages must not move the flow
 
     init(supervisor: EngineSupervisor, app: AppDelegate) {
         self.supervisor = supervisor
@@ -65,6 +67,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
 
     private func enter(_ step: SetupStep) {
         poll?.invalidate(); poll = nil
+        if step != .connect, awaitingEngine { attempt += 1; awaitingEngine = false }     // Back while the old engine stops
         switch step {
         case .permissions:
             permissions = Self.currentPermissions()
@@ -79,14 +82,22 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             // Setup must not move the cursor or click: output stays off until "Start playing".
             // A fresh engine every time: a running one may stream from another pair, and it is calibrated already.
             supervisor.holdOutputOff = true
-            flow.prompt = nil; flow.calibrated = false; flow.lit = []
-            supervisor.stop { [weak self] in self?.supervisor.start() }
+            attempt += 1
+            let mine = attempt
+            awaitingEngine = true
+            supervisor.stop { [weak self] in
+                guard let self, mine == attempt, flow.step == .connect, window.isVisible else { return }
+                awaitingEngine = false
+                flow.prompt = nil; flow.calibrated = false; flow.lit = []
+                supervisor.start()
+            }
         default: break
         }
     }
 
     private func engineEvent(_ event: EngineEvent) {
         guard window.isVisible else { return }
+        if awaitingEngine, case .message = event { return }
         let before = flow
         switch event {
         case .message(let message): flow.apply(message)
@@ -367,6 +378,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         poll?.invalidate(); poll = nil
+        attempt += 1; awaitingEngine = false
         supervisor.holdOutputOff = false
         if !finished, supervisor.status == .running { supervisor.send(.outputOn) }
         AccessibilityGuide.shared.stop()

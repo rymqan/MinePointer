@@ -44,9 +44,10 @@ final class EngineSupervisor {
     private(set) var status = EngineStatus.stopped
     private(set) var state = EngineState()
     private(set) var logLines: [String] = []
-    /// While true the engine gets `output off` as soon as it runs (setup must not receive synthetic clicks).
+    /// While true a launched engine starts with output off (setup must not receive synthetic clicks).
     var holdOutputOff = false
-    /// The output state the person chose (menu, panic key, setup); an automatic restart gets it back before it can click.
+    /// The engine's last reported output switch (the panic key and the menu change it inside the engine); an automatic restart
+    /// starts with it (`--output-off`), so a crash never turns output back on.
     private var outputOff = false
 
     private var observers: [(EngineEvent) -> Void] = []
@@ -61,7 +62,6 @@ final class EngineSupervisor {
     private var startWhenStopped = false
     private var stopCompletions: [() -> Void] = []
     private var logHandle: FileHandle?
-    private var sentOutputOff = false
 
     init() {
         let fm = FileManager.default
@@ -94,7 +94,7 @@ final class EngineSupervisor {
 
     private func launch() {
         restartTimer?.invalidate(); restartTimer = nil
-        requested = false; sawError = nil; sentOutputOff = false
+        requested = false; sawError = nil
         state = EngineState()
         let override = ProcessInfo.processInfo.environment["MINEPOINTER_ENGINE"]
         guard let executable = override.map({ URL(fileURLWithPath: $0) }) ?? Bundle.main.executableURL else {
@@ -103,7 +103,7 @@ final class EngineSupervisor {
         }
         let child = Process(), stdin = Pipe(), stdout = Pipe()
         child.executableURL = executable
-        child.arguments = override == nil ? ["--engine"] : []
+        child.arguments = override != nil ? [] : holdOutputOff || outputOff ? ["--engine", "--output-off"] : ["--engine"]
         child.standardInput = stdin
         child.standardOutput = stdout           // stderr stays inherited
         do { try child.run() } catch {
@@ -117,7 +117,6 @@ final class EngineSupervisor {
         try? stdout.fileHandleForWriting.close(); try? stdin.fileHandleForReading.close()
         note("engine started (pid \(child.processIdentifier))")
         setStatus(.running)
-        if holdOutputOff || outputOff { send(.outputOff); sentOutputOff = true }
         let reader = stdout.fileHandleForReading
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var splitter = LineSplitter()
@@ -167,7 +166,6 @@ final class EngineSupervisor {
     }
 
     func send(_ command: EngineCommand) {
-        if command == .outputOff { outputOff = true } else if command == .outputOn { outputOff = false }
         guard let input else { return }
         if (try? input.write(contentsOf: Data((command.rawValue + "\n").utf8))) == nil { note("could not send '\(command.rawValue)'") }
     }
@@ -181,9 +179,7 @@ final class EngineSupervisor {
             switch message {
             case .state(let next):
                 state = next
-                // The panic key changes output inside the engine; "calibrating" hides the output mode, so it leaves it as it was.
-                if next.mode == "output off" { outputOff = true } else if next.mode != "calibrating" { outputOff = false }
-                if holdOutputOff || outputOff, !sentOutputOff { send(.outputOff); sentOutputOff = true }
+                outputOff = !next.output
             case .error(let text): sawError = text; note("engine error: \(text)")
             case .log(let text): appendLog(text)
             default: break

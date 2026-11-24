@@ -35,7 +35,7 @@ def log(text):
 
 def state():
     shown = "calibrating" if calibrating else "output off" if output_off else ui_mode
-    emit("\t".join(["@state", session, shown, str(left), str(right), gesture, str(seq)]))
+    emit("\t".join(["@state", session, shown, str(left), str(right), gesture, str(seq), "0" if output_off else "1"]))
 
 
 def set_session(text):

@@ -40,7 +40,7 @@ let camera = Camera(config: Config.load())
 let detector = GestureDetector(config: camera.config)
 let output = MouseOutput()
 let session = CaseSession()
-var outputEnabled = true
+var outputEnabled = !arguments.contains("--output-off")      // the UI restarts a crashed engine with the person's choice
 var lastSampleArrival = 0.0
 var lastLateNote = 0.0
 var streamLost = false
@@ -50,18 +50,18 @@ var sessionText = ""                // the latest CaseSession state; for the UI
 var lastGesture = "", gestureSeq = 0
 /// The panel text and the "@gesture" line of a recognized gesture; sent also while output is off (the UI's gesture check).
 func showGesture(_ text: String, _ id: EngineGesture) { lastGesture = text; gestureSeq += 1; send(.gesture(id)) }
-func send(_ message: EngineMessage) { writeLine(message.line) }
+func send(_ message: EngineMessage) { writeLine(message.line, droppable: false) }
 
 /// stdout is the UI's pipe, and the UI process is throttled while the game is in front (or may hang): lines go out on their own
 /// queue, so a full pipe never stalls the 240 Hz main thread that also releases the buttons. Past `maxPendingLines` waiting,
-/// new lines are dropped (the UI catches up with the next @state).
+/// new log lines are dropped; protocol lines never are (an @calibrated or @error has no second copy), and they are few.
 let stdoutQueue = DispatchQueue(label: "minepointer.stdout")
 let pendingLock = NSLock()
 var pendingLines = 0
 let maxPendingLines = 1000
-func writeLine(_ line: String) {
+func writeLine(_ line: String, droppable: Bool = true) {
     pendingLock.lock()
-    let room = pendingLines < maxPendingLines
+    let room = !droppable || pendingLines < maxPendingLines
     if room { pendingLines += 1 }
     pendingLock.unlock()
     guard room else { return }
@@ -247,6 +247,7 @@ let watcher = ConfigWatcher { config in
 func engineState() -> EngineState {
     var s = EngineState()
     s.session = sessionText
+    s.output = outputEnabled
     s.left = output.leftDown
     s.right = output.rightDown
     s.mode = calibration != nil ? "calibrating" : !outputEnabled ? "output off" : reconnecting ? "reconnecting"
