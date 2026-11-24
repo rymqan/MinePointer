@@ -65,3 +65,7 @@ SOFTWARE.
 ### AirPointer assets
 
 The MIT license above does not cover `Assets/`. It contains Apple's AirPods Pro 3 AR model, renders of it, and sounds that use parts from cuelume; see `Assets/LICENSE.md`. MinePointer does not build any of these assets into its app; they are in this repository only because it keeps AirPointer's tree unchanged.
+
+## MinePointer app icon
+
+The app icon (`Packaging/AppIcon.icns`) is MinePointer's own work, drawn by `Packaging/make-icon.swift` from an SF Symbol. It contains no AirPointer artwork and no Apple renders.
