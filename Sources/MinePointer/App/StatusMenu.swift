@@ -85,6 +85,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         add(menu, "Show Indicator", #selector(toggleIndicator)).state = app.indicator.isEnabled ? .on : .off
         menu.addItem(.separator())
 
+        add(menu, "Open MinePointer", #selector(showHome))
         add(menu, "Setup…", #selector(showSetup))
         add(menu, "Settings…", #selector(showSettings), key: ",")
         add(menu, "Open Logs Folder", #selector(openLogs))
@@ -110,6 +111,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func recalibrate() { supervisor.send(.recalibrate) }
     @objc private func toggleOutput() { supervisor.send(supervisor.state.output ? .outputOff : .outputOn) }
     @objc private func toggleIndicator() { app.setIndicator(!app.indicator.isEnabled) }
+    @objc private func showHome() { app.showHome() }
     @objc private func showSetup() { app.showSetup() }
     @objc private func showSettings() { app.showSettings() }
     @objc private func openLogs() { NSWorkspace.shared.open(logsFolder) }

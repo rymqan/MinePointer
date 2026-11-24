@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenu?
     private lazy var setup = SetupWindow(supervisor: supervisor, app: self)
     private lazy var settings = SettingsWindow(app: self)
+    private lazy var home = HomeWindow(supervisor: supervisor, app: self)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -31,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showSetup(step: step)
         } else if UserDefaults.standard.bool(forKey: setupCompleteKey), CBManager.authorization == .allowedAlways, AXIsProcessTrusted() {
             supervisor.start()
+            if !launchedAtLogin { showHome() }      // at login it starts quietly in the menu bar
         } else {
             showSetup()
         }
@@ -38,11 +40,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// Opening the app again (Finder, Spotlight, Launchpad) while it runs: a menu bar app has no window to bring back, and its
-    /// icon may sit behind the notch, so show Settings (or the setup while it is not done).
+    /// Opening the app again (Finder, Spotlight, Launchpad) while it runs: its icon may sit behind the notch, so bring back the
+    /// main window (or the setup while it is not done).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { UserDefaults.standard.bool(forKey: setupCompleteKey) ? showSettings() : showSetup() }
+        if !flag { UserDefaults.standard.bool(forKey: setupCompleteKey) ? showHome() : showSetup() }
         return true
+    }
+
+    /// True when macOS opened the app as a login item (SMAppService.mainApp): the launch event says so.
+    /// UNVERIFIED for SMAppService on macOS 27; the fallback is a window at login, which is harmless.
+    private var launchedAtLogin: Bool {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        return event?.eventID == kAEOpenApplication
+            && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -55,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showSetup(step: Int? = nil) { setup.show(step: step) }
     func showSettings() { settings.show() }
+    func showHome() { home.show() }
 
     func showAbout() {
         NSApp.activate()

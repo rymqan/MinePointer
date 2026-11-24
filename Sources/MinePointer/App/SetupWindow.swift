@@ -374,6 +374,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         supervisor.holdOutputOff = false
         if supervisor.status == .running { supervisor.send(.outputOn) } else { supervisor.start() }
         window.close()
+        app.showHome()
     }
 
     func windowWillClose(_ notification: Notification) {

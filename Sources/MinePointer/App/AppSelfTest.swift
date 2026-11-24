@@ -77,5 +77,12 @@ func appSelfTest() {
     permissions.accessibility = true; permissions.inputMonitoring = false
     precondition(SetupFlow.canContinue(.permissions, permissions: permissions, hasAirPods: false), "Input Monitoring is not required")
     precondition(!SetupFlow.canContinue(.airpods, permissions: permissions, hasAirPods: false) && SetupFlow.canContinue(.airpods, permissions: permissions, hasAirPods: true))
-    print("PASS: app restart policy, settings mappings, session texts, setup flow")
+    // Main window guidance.
+    precondition(homeGuidance(.stopped, EngineState(), prompt: "").hasPrefix("Stopped"))
+    precondition(homeGuidance(.running, EngineState(session: "waiting: open the case lid", mode: "calibrating"), prompt: "") == "Open the case lid, then close it again.",
+                 "the lid wait wins over the calibrating mode")
+    precondition(homeGuidance(.running, EngineState(session: "streaming", mode: "calibrating"), prompt: "Make 3 twists") == "Make 3 twists")
+    precondition(homeGuidance(.running, EngineState(session: "streaming"), prompt: "").hasPrefix("Ready"))
+    precondition(homeGuidance(.failed("No AirPods"), EngineState(), prompt: "") == "No AirPods")
+    print("PASS: app restart policy, settings mappings, session texts, setup flow, home guidance")
 }
