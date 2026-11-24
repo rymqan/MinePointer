@@ -35,7 +35,7 @@ final class EngineSupervisor {
     static let restartLimit = 3             // automatic restarts ...
     static let restartWindow = 120.0        // ... within this many seconds
     static let restartDelay = 1.0
-    static let stopGrace = 3.0              // after `quit`, then terminate()
+    static let stopGrace = 10.0             // after `quit`, then terminate(): the engine gives the helper up to 7 s to release the AirPods (CaseSession.shutdown); killing it sooner leaves the helper holding the channel (the next start fails with CHANNEL_BUSY)
     static let logKept = 300
     static let logLimit = 5_000_000         // engine.log is renamed to engine.1.log above this, when the supervisor is created
 

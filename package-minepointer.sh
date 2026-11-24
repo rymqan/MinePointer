@@ -51,7 +51,9 @@ ditto $app $stage/MinePointer.app
 ln -s /Applications $stage/Applications
 rm -f $dmg
 hdiutil create -volname "MinePointer $version" -srcfolder $stage -format UDZO -ov $dmg
-if [[ "$identity" != "-" ]]; then codesign --force --sign "$identity" --timestamp $dmg; fi
+# Sign the DMG only for notarization: a signed but unnotarized DMG makes Gatekeeper block the downloaded image itself, so the
+# recipient needs "Open Anyway" twice (DMG, then app). Unsigned, only the app (signed, hardened) is assessed at first launch.
+if [[ -n "${MINEPOINTER_NOTARY_PROFILE:-}" && "$identity" != "-" ]]; then codesign --force --sign "$identity" --timestamp $dmg; fi
 hdiutil verify $dmg
 
 # Open the finished image and verify the app as the recipient will see it.
