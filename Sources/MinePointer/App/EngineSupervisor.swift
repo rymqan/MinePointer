@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 // Runs the engine (`MinePointer --engine`) as a child, parses its stdout (EngineLink.swift), keeps the log and decides
-// whether to restart it. MINEPOINTER_ENGINE=<path> replaces the executable, with no arguments (a fake engine for UI tests).
+// whether to restart it. MINEPOINTER_ENGINE=<path> replaces the executable (a fake engine for UI tests); it gets only `--output-off`, when due.
 
 enum EngineStatus: Equatable {
     case stopped
@@ -103,7 +103,7 @@ final class EngineSupervisor {
         }
         let child = Process(), stdin = Pipe(), stdout = Pipe()
         child.executableURL = executable
-        child.arguments = override != nil ? [] : holdOutputOff || outputOff ? ["--engine", "--output-off"] : ["--engine"]
+        child.arguments = (override == nil ? ["--engine"] : []) + (holdOutputOff || outputOff ? ["--output-off"] : [])
         child.standardInput = stdin
         child.standardOutput = stdout           // stderr stays inherited
         do { try child.run() } catch {

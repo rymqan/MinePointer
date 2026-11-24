@@ -19,7 +19,7 @@ speed = 0.25 if "--fast" in args or os.environ.get("FAKE_ENGINE_FAST") else 1.0
 
 lock = threading.Lock()
 session, ui_mode, left, right, gesture, seq = "", "", 0, 0, "", 0
-output_off = False
+output_off = "--output-off" in args
 calibrating = False
 
 

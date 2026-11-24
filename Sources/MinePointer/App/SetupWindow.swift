@@ -86,7 +86,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             let mine = attempt
             awaitingEngine = true
             supervisor.stop { [weak self] in
-                guard let self, mine == attempt, flow.step == .connect, window.isVisible else { return }
+                guard let self, mine == attempt, flow.step == .connect else { return }     // closing the window bumps the attempt
                 awaitingEngine = false
                 flow.prompt = nil; flow.calibrated = false; flow.lit = []
                 supervisor.start()
