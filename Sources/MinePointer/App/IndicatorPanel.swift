@@ -14,6 +14,7 @@ final class IndicatorPanel {
     private var shownSeq = 0
     private var gestureUntil = 0.0
     private var timer: Timer?
+    private var prompt = ""                 // the calibration step at every start: the only place it shows over the game
 
     init(supervisor: EngineSupervisor) {
         self.supervisor = supervisor
@@ -33,6 +34,8 @@ final class IndicatorPanel {
         supervisor.observe { [weak self] event in
             guard let self else { return }
             if case .message(.state(let state)) = event, state.seq != shownSeq { shownSeq = state.seq; gestureUntil = uptimeNow() + gestureSeconds }
+            if case .message(.prompt(let text)) = event { prompt = text }
+            if case .message(.calibrated) = event { prompt = "" }
             refresh()
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -46,7 +49,11 @@ final class IndicatorPanel {
     /// The `indicator` config key changed (menu or settings).
     func setEnabled(_ on: Bool) { enabled = on; refresh() }
 
-    private var wanted: Bool { enabled && supervisor.status == .running }
+    private var calibrating: Bool { supervisor.state.mode == "calibrating" }
+    /// Calibration and a dropped stream show even with the indicator off: the grip wizard runs at every start and the lid
+    /// prompt comes every ~30 min, usually with the game in front, where the panel is the only thing visible.
+    private var needsPerson: Bool { calibrating || ["reconnecting", "no stream"].contains(supervisor.state.mode) }
+    private var wanted: Bool { (enabled || needsPerson) && supervisor.status == .running }
 
     private func refresh() {
         if wanted {
@@ -62,7 +69,10 @@ final class IndicatorPanel {
     }
 
     private func render() {
-        let text = supervisor.state.text(showGesture: uptimeNow() < gestureUntil)
+        let state = supervisor.state
+        let text = calibrating && !prompt.isEmpty ? "calibrating · " + prompt
+            : state.mode == "reconnecting" ? SessionText.line(state)
+            : state.text(showGesture: uptimeNow() < gestureUntil)
         guard text != label.stringValue else { return }
         label.stringValue = text
         let size = label.fittingSize
