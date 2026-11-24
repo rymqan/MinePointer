@@ -11,3 +11,11 @@ __pycache__/
 
 # Claude Code local state
 .claude/
+
+# MinePointer
+.venv/
+build/
+logs/
+config.json
+tasks/
+CLAUDE.md
