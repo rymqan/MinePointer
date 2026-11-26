@@ -5,7 +5,8 @@ import CoreBluetooth
 let setupCompleteKey = "setupComplete"
 
 /// The UI app (menu bar, setup and settings windows); it runs the engine as a child. Never returns.
-/// MINEPOINTER_SETUP_STEP=<1-7> opens the setup window at that step (a developer knob for UI review and smoke tests).
+/// MINEPOINTER_SETUP_STEP=<1-7> opens the setup window at that step, MINEPOINTER_SANDBOX=1 starts the engine and opens the sandbox
+/// (developer knobs for UI review and smoke tests).
 func runApp() -> Never {
     signal(SIGPIPE, SIG_IGN)            // a dead engine must not kill the UI through its pipe
     let app = NSApplication.shared
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var setup = SetupWindow(supervisor: supervisor, app: self)
     private lazy var settings = SettingsWindow(app: self)
     private lazy var home = HomeWindow(supervisor: supervisor, app: self)
+    private lazy var sandbox = SandboxWindow(supervisor: supervisor)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -31,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu = StatusMenu(app: self)
         if let step = ProcessInfo.processInfo.environment["MINEPOINTER_SETUP_STEP"].flatMap(Int.init) {
             showSetup(step: step)
+        } else if ProcessInfo.processInfo.environment["MINEPOINTER_SANDBOX"] == "1" {
+            supervisor.start()
+            showSandbox()
         } else if UserDefaults.standard.bool(forKey: setupCompleteKey), CBManager.authorization == .allowedAlways, AXIsProcessTrusted() {
             supervisor.start()
             if !launchedAtLogin { showHome() }      // at login it starts quietly in the menu bar
@@ -67,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showSetup(step: Int? = nil) { setup.show(step: step) }
     func showSettings() { settings.show() }
     func showHome() { home.show() }
+    func showSandbox() { sandbox.show() }
 
     func showAbout() {
         NSApp.activate()

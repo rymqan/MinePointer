@@ -15,23 +15,25 @@ Tested on one setup only: AirPods 4 with ANC, macOS 27.2.1, Apple Silicon, Minec
 
 ## Controls
 
-Hold the closed case in your right hand.
+Hold the closed case in your right hand: lid on top, the back in your palm, the front with the status light to the left. Every gesture starts from a short calm hold. The animations run at real speed: a jerk takes about a tenth of a second.
 
-| Motion | Action |
-|---|---|
-| Slow rotation | Camera |
-| Sharp jerk down | Left click |
-| Shake | Hold left button |
-| Sharp jerk up | Right click (or release the bow while the right button is latched) |
-| Pull toward you | Latch the right button |
-| Twist | Mouse wheel, one step per twist |
-| Case flat and still | Pause |
-| <kbd>⌃⌥Space</kbd> | Panic: release all buttons and stop output |
-| <kbd>⌃⌥C</kbd> | Recalibrate |
+| Motion | Action | How |
+|---|---|---|
+| Slow rotation | Camera | <img src="media/gestures/camera.gif" width="200" alt="The case turns slowly right and back, then tilts up and back; the crosshair follows"> |
+| Sharp jerk down | Left click | <img src="media/gestures/jerk-down.gif" width="200" alt="The case flicks 4 cm down and comes back"> |
+| Shake | Hold left button | <img src="media/gestures/shake.gif" width="200" alt="Jerk downs in a row, each straight back up"> |
+| Sharp jerk up | Right click (or release the bow while the right button is latched) | <img src="media/gestures/jerk-up.gif" width="200" alt="The case flicks 4 cm up and comes back"> |
+| Pull toward you | Latch the right button | <img src="media/gestures/pull.gif" width="200" alt="The case moves 6 cm toward you without turning, then back"> |
+| Twist | Mouse wheel, one step per twist | <img src="media/gestures/twist.gif" width="200" alt="A quick clockwise twist and back, then counter-clockwise and back"> |
+| Case flat and still | Pause | <img src="media/gestures/pause.gif" width="200" alt="The case is laid on its back on the table and picked up again"> |
+| <kbd>⌃⌥Space</kbd> | Panic: release all buttons and stop output | |
+| <kbd>⌃⌥C</kbd> | Recalibrate | |
 
-At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly. The steps show in a small panel at the top right of the screen.
+At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly. The steps show in the MinePointer window, with an animation of the case, and in the on-screen indicator if you turn it on.
 
 The AirPods firmware ends the stream after about 30 minutes. Open and close the case lid to start a new session; MinePointer reconnects on its own.
+
+<img src="media/gestures/connect.gif" width="200" alt="The lid opens over the earbuds and closes again">
 
 ## Install
 
@@ -39,7 +41,7 @@ The AirPods firmware ends the stream after about 30 minutes. Open and close the 
 2. Open MinePointer. The DMG is signed but not notarized, so macOS blocks the first launch: open System Settings → Privacy & Security, scroll to the message about MinePointer and click **Open Anyway**. This is needed once.
 3. The setup window walks you through the rest: Bluetooth and Accessibility permissions (Input Monitoring is optional), choosing your AirPods, connecting the case, the grip calibration and a short gesture check. MinePointer does not move the cursor or click during setup.
 
-MinePointer then lives in the menu bar: start and stop, recalibrate, output on and off, the on-screen indicator, Settings (camera speed, Minecraft sensitivity, gesture thresholds, scroll direction, launch at login, app icon) and the logs folder.
+MinePointer then lives in the menu bar: start and stop, recalibrate, output on and off, the on-screen indicator, the Sandbox (a model of the case that follows yours, with the gestures it recognizes and nothing clicked), Settings (camera speed, Minecraft sensitivity, gesture thresholds, scroll direction, launch at login, app icon) and the logs folder.
 
 Requirements: macOS 14 or later on Apple Silicon, AirPods paired with the Mac, Minecraft Java Edition.
 
@@ -84,6 +86,7 @@ Files:
 - `build/MinePointer.app/Contents/MacOS/MinePointer --engine` runs the engine alone in a terminal (commands on stdin: `recalibrate`, `output on`, `output off`, `quit`).
 - `MINEPOINTER_ENGINE=tools/fake-engine.py` runs the app against a scripted fake engine; `MINEPOINTER_SETUP_STEP=<1-7>` opens the setup at a step.
 - `--self-test` runs the offline checks.
+- `tools/render-gestures.sh` re-renders the gesture animations in `media/gestures/` from the clips in `Sources/MinePointer/CaseMotion.swift`; the app plays the same clips in setup. The self-test runs every clip through the detector and the calibration, so an animation cannot drift away from what MinePointer recognizes.
 - `--replay [take ...]` replays recorded sessions from `logs/` through the camera and gesture detector.
 - `--calibrate-log logs/helper-XXXX.txt` runs the calibration on a recorded log.
 - `MINEPOINTER_TRACE=1` (e.g. `open --env MINEPOINTER_TRACE=1 /Applications/MinePointer.app`) writes a debugging trace to `output-*.csv` in the logs folder: posted mouse moves and button events, the system-wide key presses (key codes, in every app), frontmost-app changes and timing notes. Do not share a trace you would not share as a keylog.
@@ -96,7 +99,8 @@ This repository is a fork of AirPointer: its files stay where upstream keeps the
 |---|---|
 | `Sources/MinePointer` | MinePointer: the engine, and the app in `App/` |
 | `build-minepointer.sh`, `package-minepointer.sh`, `Packaging/` | Build, DMG, version, and the icons (SVG sources in `Packaging/Icon/`, built by `make-icon.swift`) |
-| `tools/` | MinePointer's recording and log tools |
+| `tools/` | MinePointer's recording, log and animation tools |
+| `media/` | README animations, rendered by `tools/render-gestures.sh` |
 | `Sources/AirPointer`, `Sources/ClosedCase*` | AirPointer; MinePointer compiles its helpers, `ClosedCaseAirPods.swift`, `RemoteKit.swift` and `AccessibilityGuide.swift` |
 | `Assets/`, `Docs/`, `Scripts/`, `Tests/`, `build.sh` | AirPointer, unused by MinePointer |
 

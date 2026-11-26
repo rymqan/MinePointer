@@ -13,6 +13,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     private let actions = ActionStore()
     private let page = rkVStack(spacing: 16, align: .centerX)
     private let bluetooth = ClosedCaseBluetoothAccess()
+    private let demo = CaseDemoView()       // kept across renders: the page is rebuilt often and the loop must not restart
 
     private var flow = SetupFlow()
     private var permissions = SetupPermissions()
@@ -29,7 +30,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     init(supervisor: EngineSupervisor, app: AppDelegate) {
         self.supervisor = supervisor
         self.app = app
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 660),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
         window.title = "Set Up MinePointer"
@@ -39,6 +40,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.backgroundColor = HomePalette.canvas
         window.delegate = self
+        demo.heightAnchor.constraint(equalToConstant: 180).isActive = true
         guard let content = window.contentView else { return }
         rkPin(page, in: content, insets: NSEdgeInsets(top: 56, left: 40, bottom: 28, right: 40))
         supervisor.observe { [weak self] event in self?.engineEvent(event) }
@@ -81,14 +83,14 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .connect:
             // Setup must not move the cursor or click: output stays off until "Start playing".
             // A fresh engine every time: a running one may stream from another pair, and it is calibrated already.
-            supervisor.holdOutputOff = true
+            supervisor.holdOutput("setup")
             attempt += 1
             let mine = attempt
             awaitingEngine = true
             supervisor.stop { [weak self] in
                 guard let self, mine == attempt, flow.step == .connect else { return }     // closing the window bumps the attempt
                 awaitingEngine = false
-                flow.prompt = nil; flow.calibrated = false; flow.lit = []
+                flow.prompt = nil; flow.calibrated = false; flow.lit = []; flow.picked = nil
                 supervisor.start()
             }
         default: break
@@ -103,6 +105,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .message(let message): flow.apply(message)
         case .status: break
         }
+        if case .message(.progress) = event { demo.ring = flow.progress; return }     // many a second: the ring only
         if flow.step != before.step {
             supervisor.note("setup step: \(flow.step)")
             enter(flow.step)
@@ -284,7 +287,12 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case "ready: close the lid", "lid closed", "streaming": page.body = "Hold the case still in your right hand. Calibration starts next."
         default: page.body = "Put both earbuds in the case, close the lid and hold it in your right hand."
         }
-        page.content = centered(chip)
+        demo.clip = SetupFlow.caseArt(session: raw, mode: supervisor.state.mode, prompt: nil) ?? .calibrationStill
+        demo.ring = nil
+        demo.setAccessibilityLabel(page.body)
+        let art = rkVStack([demo, chip], spacing: 14, align: .centerX)
+        demo.widthAnchor.constraint(equalTo: art.widthAnchor).isActive = true
+        page.content = art
         page.primary = "Connecting…"
         page.primaryEnabled = false
         return page
@@ -300,6 +308,13 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         }
         let stack = rkVStack(spacing: 14, align: .centerX)
         if let prompt = flow.prompt {
+            if let n = SetupFlow.calibrationNumber(prompt), let clip = SetupFlow.calibrationClip(n) {
+                demo.clip = clip
+                demo.ring = flow.progress
+                demo.setAccessibilityLabel(prompt)
+                stack.addArrangedSubview(demo)
+                demo.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            }
             if let n = SetupFlow.calibrationNumber(prompt) {
                 let chip = StatusChip()
                 chip.set("Step \(n) of \(SetupFlow.calibrationSteps)", dot: false)
@@ -333,7 +348,21 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             let stack = rkVStack([rkSymbolView(t.1, 24, text, .regular), title, sub], spacing: 4, align: .centerX)
             rkPin(stack, in: surface, insets: NSEdgeInsets(top: 14, left: 8, bottom: 14, right: 8))
             for label in [title, sub] { label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-            surface.setAccessibilityLabel("\(t.2): \(t.3)\(lit ? ", done" : "")")
+            if t.0 == flow.demoTile {           // the tile the demo above shows
+                surface.wantsLayer = true
+                surface.layer?.borderWidth = 2
+                surface.layer?.cornerRadius = 12
+                surface.layer?.borderColor = HomePalette.ink.cgColor
+            }
+            // A clear button over the tile: a click (or Space) shows the tile's motion in the demo.
+            let hit = actions.bind(NSButton(title: "", target: nil, action: nil)) { [weak self] _ in
+                self?.flow.picked = t.0
+                self?.render()
+            }
+            hit.isBordered = false
+            hit.isTransparent = true
+            hit.setAccessibilityLabel("\(t.2): \(t.3)\(lit ? ", done" : ""). Show how")
+            rkPin(hit, in: surface)
             return surface
         }
         func gridRow(_ items: ArraySlice<(GestureTile, String, String, String)>) -> NSStackView {
@@ -344,6 +373,14 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         let grid = rkVStack([gridRow(tiles[0..<3]), gridRow(tiles[3..<6])], spacing: 10, align: .leading)
         for row in grid.arrangedSubviews { row.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true }
         var content = [grid as NSView]
+        if let t = tiles.first(where: { $0.0 == flow.demoTile }) {
+            demo.clip = t.0.clip
+            demo.ring = nil
+            demo.setAccessibilityLabel("\(t.2): \(t.3)")
+            let holder = rkVStack([demo, rkWrap("\(t.2) — \(t.3). Click a tile to see its motion.", 12, align: .center)], spacing: 6, align: .centerX)
+            demo.widthAnchor.constraint(equalTo: holder.widthAnchor).isActive = true
+            content.insert(holder, at: 0)
+        }
         if uptimeNow() < vetoHintUntil { content.append(rkWrap("Make a short calm pause before the gesture.", 13, .secondaryLabelColor, align: .center)) }
         let stack = rkVStack(content, spacing: 14, align: .centerX)
         for view in content { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
@@ -371,8 +408,8 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     private func finish() {
         finished = true
         UserDefaults.standard.set(true, forKey: setupCompleteKey)
-        supervisor.holdOutputOff = false
-        if supervisor.status == .running { supervisor.send(.outputOn) } else { supervisor.start() }
+        supervisor.releaseOutput("setup", turnOn: true)
+        if supervisor.status != .running { supervisor.start() }
         window.close()
         app.showHome()
     }
@@ -380,8 +417,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         poll?.invalidate(); poll = nil
         attempt += 1; awaitingEngine = false
-        supervisor.holdOutputOff = false
-        if !finished, supervisor.status == .running { supervisor.send(.outputOn) }
+        supervisor.releaseOutput("setup", turnOn: true)
         AccessibilityGuide.shared.stop()
     }
 
@@ -393,11 +429,6 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .crashLoop: return "The engine keeps crashing. The log is at \(EngineSupervisor.logURL.path)."
         case .stopped, .running: return nil
         }
-    }
-
-    private func centered(_ view: NSView) -> NSView {
-        let holder = rkVStack([view], spacing: 0, align: .centerX)
-        return holder
     }
 
     private func row(_ symbol: String, _ text: String) -> NSView {
