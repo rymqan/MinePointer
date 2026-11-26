@@ -77,6 +77,16 @@ final class Calibration {
     private var direction = 0.0
     private var swings = 0
 
+    /// How far the current step has come, 0-1 (the ring around the case in the app): the still hold, the twists, the tilt swings.
+    var progress: Double {
+        switch phase {
+        case .still: return runStart.flatMap { start in lastTime.map { min(1, ($0 - start) / stillSeconds) } } ?? 0
+        case .twist: return Double(bursts.count) / Double(burstsNeeded)
+        case .tilt: return Double(swings) / Double(tiltSwingsNeeded)
+        case .done: return 1
+        }
+    }
+
     /// `withTilt: false` stops after step 2 (offline check on a recording that has no tilt step).
     init(withTilt: Bool = true) { self.withTilt = withTilt }
 

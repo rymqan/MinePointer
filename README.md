@@ -33,6 +33,8 @@ At start, MinePointer calibrates the grip: hold the case still, then twist it cl
 
 The AirPods firmware ends the stream after about 30 minutes. Open and close the case lid to start a new session; MinePointer reconnects on its own.
 
+<img src="media/gestures/connect.gif" width="200" alt="The lid opens over the earbuds and closes again">
+
 ## Install
 
 1. Download `MinePointer-<version>.dmg` (or build it, see below), open it and drag MinePointer to Applications.

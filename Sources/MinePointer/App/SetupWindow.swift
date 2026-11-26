@@ -105,6 +105,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .message(let message): flow.apply(message)
         case .status: break
         }
+        if case .message(.progress) = event { demo.ring = flow.progress; return }     // many a second: the ring only
         if flow.step != before.step {
             supervisor.note("setup step: \(flow.step)")
             enter(flow.step)
@@ -286,7 +287,12 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case "ready: close the lid", "lid closed", "streaming": page.body = "Hold the case still in your right hand. Calibration starts next."
         default: page.body = "Put both earbuds in the case, close the lid and hold it in your right hand."
         }
-        page.content = centered(chip)
+        demo.clip = SetupFlow.caseArt(session: raw, mode: supervisor.state.mode, prompt: nil) ?? .calibrationStill
+        demo.ring = nil
+        demo.setAccessibilityLabel(page.body)
+        let art = rkVStack([demo, chip], spacing: 14, align: .centerX)
+        demo.widthAnchor.constraint(equalTo: art.widthAnchor).isActive = true
+        page.content = art
         page.primary = "Connecting…"
         page.primaryEnabled = false
         return page
@@ -304,6 +310,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         if let prompt = flow.prompt {
             if let n = SetupFlow.calibrationNumber(prompt), let clip = SetupFlow.calibrationClip(n) {
                 demo.clip = clip
+                demo.ring = flow.progress
                 demo.setAccessibilityLabel(prompt)
                 stack.addArrangedSubview(demo)
                 demo.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -368,6 +375,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         var content = [grid as NSView]
         if let t = tiles.first(where: { $0.0 == flow.demoTile }) {
             demo.clip = t.0.clip
+            demo.ring = nil
             demo.setAccessibilityLabel("\(t.2): \(t.3)")
             let holder = rkVStack([demo, rkWrap("\(t.2) — \(t.3). Click a tile to see its motion.", 12, align: .center)], spacing: 6, align: .centerX)
             demo.widthAnchor.constraint(equalTo: holder.widthAnchor).isActive = true
@@ -421,11 +429,6 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .crashLoop: return "The engine keeps crashing. The log is at \(EngineSupervisor.logURL.path)."
         case .stopped, .running: return nil
         }
-    }
-
-    private func centered(_ view: NSView) -> NSView {
-        let holder = rkVStack([view], spacing: 0, align: .centerX)
-        return holder
     }
 
     private func row(_ symbol: String, _ text: String) -> NSView {

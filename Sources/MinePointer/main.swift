@@ -159,6 +159,7 @@ func abortGestures() {
 /// The camera keeps being fed (it learns the gyro bias while the case is still); only its output is dropped.
 func startCalibration() {
     calibration = Calibration()
+    sentProgress = 0
     abortGestures()
 }
 
@@ -190,6 +191,7 @@ func fail(_ text: String) -> Never {
 guard AXIsProcessTrusted() else { fail(engineErrorTextAccessibility) }
 log("Accessibility: granted")
 
+var sentProgress = 0.0              // the last @progress of the calibration
 var sendPose = false                // the UI's sandbox is open
 var poseTracker = CasePoseTracker()
 var lastPoseSent = 0.0
@@ -213,6 +215,10 @@ session.onSample = { sample in
     }
     if let wizard = calibration {
         for prompt in wizard.feed(sample) { log(prompt); send(.prompt(prompt)) }
+        if abs(wizard.progress - sentProgress) >= 0.05 {          // droppable: the next one replaces it
+            sentProgress = wizard.progress
+            writeLine(EngineMessage.progress(sentProgress).line)
+        }
         if let axes = wizard.axes { finishCalibration(axes) }
         return
     }

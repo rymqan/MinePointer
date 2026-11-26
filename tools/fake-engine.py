@@ -91,9 +91,13 @@ def calibrate():
         "Make 3 clockwise twists (and back), with a short pause between them",
         "Slowly raise and lower the far end of the case twice",
     ]
-    for prompt in prompts:
+    # The ring of each step: the still hold fills smoothly, the twists and tilt swings in steps.
+    rings = [[(i + 1) / 10 for i in range(10)], [1 / 3, 2 / 3, 1], [0.5, 1]]
+    for prompt, ring in zip(prompts, rings):
         emit("@prompt\t" + prompt)
-        pause(2.5)
+        for value in ring:
+            pause(2.5 / len(ring))
+            emit("@progress\t%.2f" % value)
     calibrating = False
     emit("@calibrated")
     state()

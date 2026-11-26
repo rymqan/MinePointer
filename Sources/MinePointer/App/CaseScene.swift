@@ -11,8 +11,15 @@ import UniformTypeIdentifiers
 final class CaseStage {
     let scene = SCNScene()
     let camera = SCNNode()
-    private let model = CaseStage.caseNode(opacity: 1)
-    private let ghost = CaseStage.caseNode(opacity: 0.22)
+    private let model: SCNNode, hinge: SCNNode
+    private let ghost: SCNNode = {          // the rest pose: one rounded block, so nothing inside shows through
+        let box = SCNBox(width: 0.021, height: 0.046, length: 0.050, chamferRadius: 0.0095)
+        box.chamferSegmentCount = 10
+        box.firstMaterial?.diffuse.contents = NSColor(white: 0.97, alpha: 1)
+        let node = SCNNode(geometry: box)
+        node.opacity = 0.22
+        return node
+    }()
     private let cue = SCNNode()
     private let crosshair = SCNNode()
     private let table = SCNNode(geometry: SCNBox(width: 0.3, height: 0.008, length: 0.3, chamferRadius: 0.002))
@@ -20,6 +27,7 @@ final class CaseStage {
     private let aimRest = SCNVector3(-0.1, 0.03, 0.0045)      // on the part of the screen the case does not hide
 
     init() {
+        (model, hinge) = Self.caseNode()
         ghost.isHidden = true
         let screen = SCNNode(geometry: SCNBox(width: 0.34, height: 0.19, length: 0.008, chamferRadius: 0.008))
         screen.geometry?.firstMaterial?.diffuse.contents = HomePalette.screen
@@ -68,6 +76,7 @@ final class CaseStage {
 
     func show(_ pose: CasePose) {
         place(pose.position, pose.rotation)
+        hinge.eulerAngles.z = CGFloat(-pose.lid * 105 * .pi / 180)        // the lid swings up and over toward the palm
         if aims { crosshair.position = SCNVector3(aimRest.x + pose.yaw * 0.0025, aimRest.y + pose.pitch * 0.0025, aimRest.z) }
     }
 
@@ -110,32 +119,58 @@ final class CaseStage {
     }
 
     /// AirPods 4 case, 50 × 46 × 21 mm, as held in the right hand: lid on top, the back in the palm (right), the front with the
-    /// status light to the left, a narrow side toward the screen.
-    private static func caseNode(opacity: CGFloat) -> SCNNode {
-        let box = SCNBox(width: 0.021, height: 0.046, length: 0.050, chamferRadius: 0.0095)
-        box.chamferSegmentCount = 12
+    /// status light to the left, a narrow side toward the screen. The lid (the returned hinge, turned by `CasePose.lid`) opens on
+    /// a hinge along the back over the two earbuds.
+    /// A quarter circle: SCNShape's chamfer as a round edge instead of a bevel.
+    private static let roundProfile: NSBezierPath = {
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: 0, y: 1))
+        p.appendArc(withCenter: NSPoint(x: 0, y: 0), radius: 1, startAngle: 90, endAngle: 0, clockwise: true)
+        return p
+    }()
+
+    private static func caseNode() -> (SCNNode, hinge: SCNNode) {
         let shell = SCNMaterial()
-        shell.diffuse.contents = seamTexture()
+        shell.diffuse.contents = NSColor(white: 0.97, alpha: 1)
         shell.specular.contents = NSColor(white: 0.55, alpha: 1)
         shell.shininess = 0.35
-        box.materials = [shell]
-        let node = SCNNode(geometry: box)
+        // The outline seen from above (21 × 50 mm, corners rounded 9.5 mm), drawn in millimetres and extruded upward; only the
+        // outer end is rounded, so body and lid meet flush at the seam.
+        func part(height: CGFloat, roundTop: Bool) -> SCNNode {
+            let path = NSBezierPath(roundedRect: NSRect(x: -10.5, y: -25, width: 21, height: 50), xRadius: 9.5, yRadius: 9.5)
+            path.flatness = 0.05
+            let shape = SCNShape(path: path, extrusionDepth: height)
+            shape.chamferRadius = 8
+            shape.chamferMode = roundTop ? .front : .back
+            shape.chamferProfile = Self.roundProfile
+            shape.materials = [shell]
+            let solid = SCNNode(geometry: shape)
+            solid.eulerAngles.x = -.pi / 2          // the extrusion (z) points up
+            let node = SCNNode()
+            node.scale = SCNVector3(0.001, 0.001, 0.001)
+            node.addChildNode(solid)
+            return node
+        }
+        let node = SCNNode()
+        let body = part(height: 30.5, roundTop: false)  // from the bottom (-23 mm) to the seam (+7.5 mm)
+        body.position.y = -0.00775
+        let hinge = SCNNode()                           // at the top of the back side
+        hinge.position = SCNVector3(0.0105, 0.0075, 0)
+        let lid = part(height: 15.4, roundTop: true)
+        lid.position = SCNVector3(-0.0105, 0.0078, 0)
+        hinge.addChildNode(lid)
+        for z in [-0.012, 0.012] {                      // the earbuds' stems stand a little above the seam
+            let bud = SCNNode(geometry: SCNCapsule(capRadius: 0.0045, height: 0.018))
+            bud.geometry?.firstMaterial?.diffuse.contents = NSColor(white: 0.9, alpha: 1)
+            bud.position = SCNVector3(0, 0.003, z)
+            node.addChildNode(bud)
+        }
         let light = SCNNode(geometry: SCNCylinder(radius: 0.0011, height: 0.0004))
         light.geometry?.firstMaterial?.diffuse.contents = NSColor(white: 0.25, alpha: 1)
         light.eulerAngles.z = .pi / 2
         light.position = SCNVector3(-0.0106, -0.004, 0)
-        node.addChildNode(light)
-        node.opacity = opacity
-        return node
-    }
-
-    /// White with the lid seam, a thin grey line a third of the way down every side.
-    private static func seamTexture() -> NSImage {
-        NSImage(size: NSSize(width: 256, height: 256), flipped: true) { rect in
-            NSColor(white: 0.97, alpha: 1).setFill(); rect.fill()
-            NSColor(white: 0.72, alpha: 1).setFill(); NSRect(x: 0, y: 86, width: 256, height: 2).fill()
-            return true
-        }
+        for child in [body, hinge, light] { node.addChildNode(child) }
+        return (node, hinge)
     }
 }
 
@@ -148,6 +183,10 @@ final class CaseDemoView: SCNView, SCNSceneRendererDelegate {
     private var next: (clip: CaseClip?, started: Double, live: [Double]?) = (nil, 0, nil)
     private var loaded: String?                 // render thread: the id of the clip the stage is set up for
     private let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+    /// A ring around the case filling with the calibration step's progress (0-1), like AirPointer's hold ring; nil hides it.
+    var ring: Double? { didSet { if ring != oldValue { ringView.needsDisplay = true } } }
+    private lazy var ringView = RingView(owner: self)
 
     var clip: CaseClip? {
         get { lock.withLock { next.clip } }
@@ -165,6 +204,20 @@ final class CaseDemoView: SCNView, SCNSceneRendererDelegate {
         delegate = self
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
+        rkPin(ringView, in: self)
+    }
+
+    private final class RingView: NSView {
+        unowned let owner: CaseDemoView
+        init(owner: CaseDemoView) { self.owner = owner; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }      // clicks go to the demo (replay)
+        override func draw(_ dirtyRect: NSRect) {
+            guard let progress = owner.ring else { return }
+            let c = owner.projectPoint(SCNVector3(0, 0, 0))                // the case's rest position on screen
+            rkDrawRing(center: NSPoint(x: c.x, y: c.y), radius: bounds.height * 0.36, progress: CGFloat(progress),
+                       track: NSColor.white.withAlphaComponent(0.18), arc: .systemGreen)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -199,7 +252,7 @@ final class CaseDemoView: SCNView, SCNSceneRendererDelegate {
     override func mouseDown(with event: NSEvent) { lock.withLock { next.started = 0 } }
 }
 
-/// `--render-gestures <folder>`: every clip as `<id>.gif`, 30 frames a second at real speed, looping.
+/// `--render-gestures <folder>`: every gesture clip and the connection as `<id>.gif`, 30 frames a second at real speed, looping.
 func renderGestureGIFs(to folder: URL) {
     let stage = CaseStage()
     let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
@@ -208,7 +261,7 @@ func renderGestureGIFs(to folder: URL) {
     stage.scene.background.contents = HomePalette.stage       // the app's stage colour, dark: it reads on GitHub's light and dark pages
     try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let fps = 30.0, size = CGSize(width: 400, height: 300)
-    for clip in CaseClip.all {
+    for clip in CaseClip.all + [.connect] {
         let url = folder.appendingPathComponent(clip.id + ".gif")
         let count = Int((clip.duration * fps).rounded())
         guard let gif = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, count, nil) else { fatalError("cannot write \(url.path)") }

@@ -33,10 +33,12 @@ final class HomeWindow: NSObject {
     private let page = rkVStack(spacing: 16, align: .centerX)
     private var prompt = ""
     private var shown: [String] = []        // what the page showed last; a rebuild only when it differs
+    private let demo = CaseDemoView()       // what to do with the case while the engine waits for it (the lid, a calibration step)
 
     init(supervisor: EngineSupervisor, app: AppDelegate) {
         self.supervisor = supervisor
         self.app = app
+        demo.heightAnchor.constraint(equalToConstant: 170).isActive = true
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
                           styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
@@ -51,9 +53,10 @@ final class HomeWindow: NSObject {
         }
         supervisor.observe { [weak self] event in
             guard let self else { return }
-            if case .message(.prompt(let text)) = event { prompt = text }
-            if case .message(.calibrated) = event { prompt = "" }
-            if case .status = event { prompt = "" }        // a new or stopped engine: the last one's step is stale
+            if case .message(.progress(let value)) = event { demo.ring = value; return }     // many a second: the ring only
+            if case .message(.prompt(let text)) = event { prompt = text; demo.ring = 0 }
+            if case .message(.calibrated) = event { prompt = ""; demo.ring = nil }
+            if case .status = event { prompt = ""; demo.ring = nil }        // a new or stopped engine: the last one's step is stale
             if window.isVisible { render() }
         }
     }
@@ -71,17 +74,31 @@ final class HomeWindow: NSObject {
         let icon = MenuIcon.of(status, state)
         let chipText = menuStatusText(status, state)
         let guidance = homeGuidance(status, state, prompt: prompt)
-        let key = [chipText, guidance, icon.symbol, state.output ? "1" : "0", app.indicator.isEnabled ? "1" : "0"]
+        let art = running ? SetupFlow.caseArt(session: state.session, mode: state.mode, prompt: prompt.isEmpty ? nil : prompt) : nil
+        let key = [chipText, guidance, art?.id ?? "", icon.symbol, state.output ? "1" : "0", app.indicator.isEnabled ? "1" : "0"]
         guard force || key != shown else { return }
         shown = key
 
         actions.removeAll()
         page.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // The window grows by the case art while there is one.
+        if let content = window.contentView, content.frame.height != (art == nil ? 420 : 600) {
+            var frame = window.frame
+            let grow = (art == nil ? 420 : 600) - content.frame.height
+            frame.origin.y -= grow; frame.size.height += grow
+            window.setFrame(frame, display: true)
+        }
         page.addArrangedSubview(rkSymbolView(icon.symbol, 44, .labelColor))
         page.addArrangedSubview(rkTitle("MinePointer", 22, align: .center))
         let chip = StatusChip()
         chip.set(chipText, live: icon == .running)
         page.addArrangedSubview(chip)
+        if let art {
+            demo.clip = art
+            demo.setAccessibilityLabel(guidance)
+            page.addArrangedSubview(demo)
+            demo.widthAnchor.constraint(equalTo: page.widthAnchor).isActive = true
+        }
         let text = rkWrap(guidance, 15, .labelColor)
         text.alignment = .center
         text.widthAnchor.constraint(lessThanOrEqualToConstant: 400).isActive = true

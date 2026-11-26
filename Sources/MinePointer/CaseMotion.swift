@@ -13,6 +13,7 @@ struct CasePose {
     var yaw = 0.0           // turn right +
     var pitch = 0.0         // front up +
     var roll = 0.0          // clockwise seen from behind + (the twist of the calibration)
+    var lid = 0.0           // 0 closed, 1 open (the connection steps); the IMU does not see it
 
     var rotation: simd_quatd {
         let rad = Double.pi / 180
@@ -21,9 +22,11 @@ struct CasePose {
     }
 
     static func + (a: CasePose, b: CasePose) -> CasePose {
-        CasePose(position: a.position + b.position, yaw: a.yaw + b.yaw, pitch: a.pitch + b.pitch, roll: a.roll + b.roll)
+        CasePose(position: a.position + b.position, yaw: a.yaw + b.yaw, pitch: a.pitch + b.pitch, roll: a.roll + b.roll, lid: a.lid + b.lid)
     }
-    static func * (a: CasePose, k: Double) -> CasePose { CasePose(position: a.position * k, yaw: a.yaw * k, pitch: a.pitch * k, roll: a.roll * k) }
+    static func * (a: CasePose, k: Double) -> CasePose {
+        CasePose(position: a.position * k, yaw: a.yaw * k, pitch: a.pitch * k, roll: a.roll * k, lid: a.lid * k)
+    }
 }
 
 /// A hint drawn beside the case: a straight arrow along a world direction, or a curved one about a world axis (right-handed);
@@ -41,10 +44,10 @@ struct CaseClip {
     var aims = false                        // the crosshair on the screen follows the turns (the camera clip); gestures never aim
     var table: Double?                      // height of a table top under the case (the pause clip)
 
-    /// From rest, each step moves to its pose in its duration; `nil` holds the pose before.
-    init(_ id: String, expect: [String] = [], cue: CaseCue? = nil, aims: Bool = false, table: Double? = nil,
+    /// From `start` (rest), each step moves to its pose in its duration; `nil` holds the pose before.
+    init(_ id: String, expect: [String] = [], cue: CaseCue? = nil, aims: Bool = false, table: Double? = nil, start: CasePose = CasePose(),
          _ steps: [(Double, CasePose?)]) {
-        var keys = [(t: 0.0, pose: CasePose())]
+        var keys = [(t: 0.0, pose: start)]
         for (dt, pose) in steps { keys.append((keys.last!.t + dt, pose ?? keys.last!.pose)) }
         self.id = id; self.keys = keys; self.expect = expect; self.cue = cue; self.aims = aims; self.table = table
     }
@@ -106,6 +109,11 @@ extension CaseClip {
     ])
 
     static let all = [camera, jerkDown, shake, jerkUp, pull, twist, pause]
+
+    // Connecting (CaseSession's lid steps): the lid opens and stays up, or closes and stays shut; the README shows both in a row.
+    static let lidOpen = CaseClip("lid-open", [(0.7, nil), (0.9, CasePose(lid: 1)), (1.8, nil)])
+    static let lidClose = CaseClip("lid-close", start: CasePose(lid: 1), [(0.7, nil), (0.9, restPose), (1.8, nil)])
+    static let connect = CaseClip("connect", [(0.7, nil), (0.9, CasePose(lid: 1)), (1.0, nil), (0.9, restPose), (1.2, nil)])
 
     // The calibration wizard (Calibration.swift), one clip per step.
     static let calibrationStill = CaseClip("calibration-still", [(3.5, nil)])
@@ -256,7 +264,13 @@ func caseMotionSelfTest() {
     }
     // The calibration clips, one after another, calibrate to the axes they were made with.
     let wizard = Calibration()
-    for s in caseSamples(.calibrationStill + .calibrationTwists + .calibrationTilt, config: config, rest: 0) { _ = wizard.feed(s) }
+    var reached: [Calibration.Phase: Double] = [:]          // the ring's furthest point in each step
+    for s in caseSamples(.calibrationStill + .calibrationTwists + .calibrationTilt, config: config, rest: 0) {
+        let phase = wizard.phase
+        _ = wizard.feed(s)
+        reached[phase] = max(reached[phase] ?? 0, wizard.phase == phase ? wizard.progress : 1)
+    }
+    precondition(reached[.still] == 1 && reached[.twist] == 1 && reached[.tilt] == 1, "calibration progress \(reached)")
     guard let axes = wizard.axes else { preconditionFailure("the calibration clips do not finish the wizard") }
     let up = SIMD3(config.neutralUp[0], config.neutralUp[1], config.neutralUp[2]), fwd = SIMD3(config.forwardAxis[0], config.forwardAxis[1], config.forwardAxis[2])
     precondition(angleDegrees(axes.up, up) < 2 && angleDegrees(axes.forward, fwd - dot(fwd, up) / dot(up, up) * up) < 5,

@@ -64,6 +64,11 @@ func appSelfTest() {
     precondition(SetupFlow.calibrationNumber("Make 3 clockwise twists (and back), with a short pause between them") == 2)
     precondition(SetupFlow.calibrationNumber("Slowly raise and lower the far end of the case twice") == 3 && SetupFlow.calibrationNumber("x") == nil)
     precondition(SetupFlow.calibrationClip(2)?.id == "calibration-twists" && SetupFlow.calibrationClip(4) == nil)
+    precondition(SetupFlow.caseArt(session: "waiting: open the case lid", mode: "calibrating", prompt: nil)?.id == "lid-open")
+    precondition(SetupFlow.caseArt(session: "ready: close the lid", mode: "calibrating", prompt: nil)?.id == "lid-close")
+    precondition(SetupFlow.caseArt(session: "streaming", mode: "calibrating", prompt: "Make 3 clockwise twists (and back), with a short pause between them")?.id == "calibration-twists")
+    precondition(SetupFlow.caseArt(session: "connecting", mode: "reconnecting", prompt: nil)?.id == "connect")
+    precondition(SetupFlow.caseArt(session: "streaming", mode: "", prompt: nil) == nil)
     var demo = SetupFlow()
     precondition(demo.demoTile == .jerkDown)
     demo.lit = [.jerkDown]
