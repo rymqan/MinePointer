@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-// Modes: --self-test (offline checks), --replay [take ...] (recordings through the camera), --calibrate-log <helper.txt> (wizard steps 1-2 on a recording),
+// Modes: --self-test (offline checks), --replay [take ...] (recordings through the camera), --render-gestures <folder> (README GIFs), --clip-poses (clips for the fake engine), --calibrate-log <helper.txt> (wizard steps 1-2 on a recording),
 // --engine (live: the child process of the UI app, talks EngineLink on stdout/stdin), anything else the UI app.
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -11,6 +11,7 @@ if arguments.first == "--self-test" {
     cameraSelfTest()
     gestureSelfTest()
     calibrationSelfTest()
+    caseMotionSelfTest()
     engineLinkSelfTest()
     appSelfTest()
     exit(0)
@@ -22,6 +23,14 @@ if arguments.first == "--calibrate-log", arguments.count > 1 {     // steps 1-2 
     func show(_ v: SIMD3<Double>) -> String { String(format: "(%.3f, %.3f, %.3f)", v.x, v.y, v.z) }
     let old = (up: SIMD3(config.neutralUp[0], config.neutralUp[1], config.neutralUp[2]), forward: SIMD3(config.forwardAxis[0], config.forwardAxis[1], config.forwardAxis[2]))
     print("up \(show(axes.up)) forward \(show(axes.forward)); off the config axes by \(String(format: "%.1f° / %.1f°", angleDegrees(axes.up, old.up), angleDegrees(axes.forward, old.forward)))")
+    exit(0)
+}
+if arguments.first == "--render-gestures", arguments.count > 1 {     // the README animations of CaseMotion.swift's clips
+    renderGestureGIFs(to: URL(fileURLWithPath: arguments[1]))
+    exit(0)
+}
+if arguments.first == "--clip-poses" {     // the gesture clips for tools/fake-engine.py
+    printClipPoses()
     exit(0)
 }
 if arguments.first == "--replay" {
@@ -181,6 +190,9 @@ func fail(_ text: String) -> Never {
 guard AXIsProcessTrusted() else { fail(engineErrorTextAccessibility) }
 log("Accessibility: granted")
 
+var sendPose = false                // the UI's sandbox is open
+var poseTracker = CasePoseTracker()
+var lastPoseSent = 0.0
 session.onState = { sessionText = $0; log("session: \($0)") }
 session.onSample = { sample in
     lastSampleArrival = uptimeNow()
@@ -191,6 +203,14 @@ session.onSample = { sample in
     if late > 0.04, lastSampleArrival - lastLateNote > 0.02 { output.note("sample_late", ms: late * 1000); lastLateNote = lastSampleArrival }
     if streamLost { streamLost = false; log("stream restored") }
     let frame = camera.feed(sample)
+    if sendPose {
+        poseTracker.feed(sample, config: camera.config)
+        if sample.receivedUptime - lastPoseSent >= 1.0 / 30 {     // droppable: a lost pose is replaced by the next one
+            lastPoseSent = sample.receivedUptime
+            let q = poseTracker.rotation, p = poseTracker.position
+            writeLine(EngineMessage.pose([p.x, p.y, p.z, q.imag.x, q.imag.y, q.imag.z, q.real]).line)
+        }
+    }
     if let wizard = calibration {
         for prompt in wizard.feed(sample) { log(prompt); send(.prompt(prompt)) }
         if let axes = wizard.axes { finishCalibration(axes) }
@@ -309,6 +329,8 @@ commandSource.setEventHandler {
         case .recalibrate?: startCalibration()
         case .outputOn?: setOutput(true)
         case .outputOff?: setOutput(false)
+        case .poseOn?: sendPose = true; poseTracker = CasePoseTracker()
+        case .poseOff?: sendPose = false
         case .quit?: quit()
         case nil: log("unknown command: \(line)")
         }

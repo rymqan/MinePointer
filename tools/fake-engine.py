@@ -7,8 +7,13 @@ Options (the UI starts it with no arguments, so the environment works too):
   --crash | FAKE_ENGINE=crash   dies with exit 139 and no @error (restarts, then "keeps crashing")
   --fast  | FAKE_ENGINE_FAST=1  runs the script about 4 times faster
 It echoes every command it reads as a log line and exits on `quit` or on stdin EOF.
+After calibrating it plays the gesture clips of the app that started it (`<app> --clip-poses`): @pose lines while the sandbox
+asks for them (`pose on`), and each gesture at the moment the real detector recognizes it in that clip. If the app cannot give
+the clips, it names a fixed list of gestures instead.
 """
+import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -21,6 +26,7 @@ lock = threading.Lock()
 session, ui_mode, left, right, gesture, seq = "", "", 0, 0, "", 0
 output_off = "--output-off" in args
 calibrating = False
+posing = False                  # `pose on`: the clips' poses go out as @pose lines
 
 
 def emit(line):
@@ -55,7 +61,7 @@ def quit_now(reason):
 
 
 def read_commands():
-    global output_off, calibrating
+    global output_off, calibrating, posing
     for raw in sys.stdin:
         command = raw.strip()
         log("command: " + command)
@@ -67,6 +73,10 @@ def read_commands():
         elif command == "output on":
             output_off = False
             state()
+        elif command == "pose on":
+            posing = True
+        elif command == "pose off":
+            posing = False
         elif command == "recalibrate":
             threading.Thread(target=calibrate, daemon=True).start()
     quit_now("stdin closed")
@@ -118,9 +128,46 @@ set_session("streaming")
 pause(0.5)
 calibrate()
 pause(1.0)
+# Detector labels (CaseMotion.swift) → the engine's @gesture id and panel text (main.swift's apply).
+GESTURES = {"jerk_down": ("jerkDown", "LMB click"), "shake": ("shake", "shake"), "jerk_up": ("jerkUp", "RMB click"),
+            "pull": ("pull", "pull"), "bow_shot": ("bowShot", "shot"), "twist_next": ("twistNext", "slot +1"),
+            "twist_previous": ("twistPrevious", "slot −1"), "veto": ("veto", "vetoed"), "pause": ("pause", "pause"),
+            "resume": ("resume", "resume")}
+
+
+def load_clips():
+    try:
+        app = subprocess.run(["ps", "-o", "comm=", "-p", str(os.getppid())], capture_output=True, text=True).stdout.strip()
+        out = subprocess.run([app, "--clip-poses"], capture_output=True, text=True, timeout=20).stdout
+        return [json.loads(line) for line in out.splitlines()]
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        log("no gesture clips (%s): naming gestures without motion" % error)
+        return []
+
+
+def play(clip):
+    events = sorted(clip["events"])
+    start = time.time()
+    for i, pose in enumerate(clip["poses"]):
+        now = i / 30
+        while events and events[0][0] <= now:
+            label = events.pop(0)[1]
+            if label in GESTURES:
+                show(*GESTURES[label])
+        if posing:
+            emit("@pose\t" + "\t".join("%.4f" % v for v in pose))
+        time.sleep(max(0, start + (i + 1) / 30 - time.time()))
+
+
+clips = load_clips()
 script = [("jerkDown", "LMB click"), ("shake", "LMB hold"), ("jerkUp", "RMB click"), ("pull", "RMB latch"),
           ("twistNext", "next slot"), ("veto", "refused"), ("pause", "pause"), ("resume", "resume")]
 while True:
-    for name, text in script:
-        pause(1.5)
-        show(name, text)
+    if clips:
+        for clip in clips:
+            log("clip: " + clip["id"])
+            play(clip)
+    else:
+        for name, text in script:
+            pause(1.5)
+            show(name, text)

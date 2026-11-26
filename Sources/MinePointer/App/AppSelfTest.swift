@@ -63,6 +63,21 @@ func appSelfTest() {
     precondition(SetupFlow.calibrationNumber("Calibration: hold the case still in your usual grip…") == 1)
     precondition(SetupFlow.calibrationNumber("Make 3 clockwise twists (and back), with a short pause between them") == 2)
     precondition(SetupFlow.calibrationNumber("Slowly raise and lower the far end of the case twice") == 3 && SetupFlow.calibrationNumber("x") == nil)
+    precondition(SetupFlow.calibrationClip(2)?.id == "calibration-twists" && SetupFlow.calibrationClip(4) == nil)
+    var demo = SetupFlow()
+    precondition(demo.demoTile == .jerkDown)
+    demo.lit = [.jerkDown]
+    precondition(demo.demoTile == .shake, "the demo moves on to the first tile not lit yet")
+    demo.lit = Set(GestureTile.allCases)
+    precondition(demo.demoTile == .jerkDown)
+    demo.picked = .pause
+    precondition(demo.demoTile == .pause, "a clicked tile wins")
+    let holds = EngineSupervisor()          // never started: the commands go nowhere, the hold bookkeeping is what is checked
+    holds.holdOutput("setup"); holds.holdOutput("sandbox"); holds.holdOutput("sandbox")
+    holds.releaseOutput("sandbox")
+    precondition(holds.holdsOutput, "closing the sandbox must not release setup's hold")
+    holds.releaseOutput("setup", turnOn: true)
+    precondition(!holds.holdsOutput)
     flow.apply(.gesture(.jerkDown))
     precondition(flow.lit.isEmpty, "gestures count on the gesture step only")
     flow.apply(.calibrated)

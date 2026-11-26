@@ -90,7 +90,7 @@ final class HomeWindow: NSObject {
 
         let primary = actions.bind(RemoteButton(running ? "Stop" : "Start", style: .primary, height: 44)) { [weak self] _ in
             guard let self else { return }
-            if supervisor.status == .running { supervisor.stop() } else { supervisor.holdOutputOff = false; supervisor.start() }
+            if supervisor.status == .running { supervisor.stop() } else { supervisor.start() }
         }
         primary.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
         page.addArrangedSubview(primary)
@@ -108,6 +108,7 @@ final class HomeWindow: NSObject {
 
         let links: [(String, () -> Void)] = [
             ("Settings", { [weak self] in self?.app.showSettings() }),
+            ("Sandbox", { [weak self] in self?.app.showSandbox() }),
             ("Run Setup Again", { [weak self] in self?.window.close(); self?.app.showSetup() }),
             ("Open Logs Folder", { NSWorkspace.shared.open(logsFolder) }),
         ]

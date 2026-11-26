@@ -44,8 +44,13 @@ final class EngineSupervisor {
     private(set) var status = EngineStatus.stopped
     private(set) var state = EngineState()
     private(set) var logLines: [String] = []
-    /// While true a launched engine starts with output off (setup must not receive synthetic clicks).
-    var holdOutputOff = false
+    /// Windows that must not receive synthetic clicks (setup, the sandbox) hold the output off: the engine turns it off, a launched
+    /// engine starts with it off, and the last release turns it back on if it was on before the first hold.
+    private var outputHolds: Set<String> = []
+    private var resumeOutput = true
+    var holdsOutput: Bool { !outputHolds.isEmpty }
+    /// The sandbox's `@pose` lines; sent again to every new engine (a restart starts without them).
+    var wantsPoses = false { didSet { if wantsPoses != oldValue { send(wantsPoses ? .poseOn : .poseOff) } } }
     /// The engine's last reported output switch (the panic key and the menu change it inside the engine); an automatic restart
     /// starts with it (`--output-off`), so a crash never turns output back on.
     private var outputOff = false
@@ -75,6 +80,8 @@ final class EngineSupervisor {
     }
 
     func observe(_ handler: @escaping (EngineEvent) -> Void) { observers.append(handler) }
+    /// The sandbox's `@pose` lines, 30 a second while it is open; they skip the observers, which would rebuild their pages.
+    var onPose: (([Double]) -> Void)?
 
     /// True until the child has really exited, also while it shuts down.
     var hasProcess: Bool { process != nil }
@@ -89,7 +96,23 @@ final class EngineSupervisor {
         }
         restarts = []
         outputOff = false
+        resumeOutput = true             // a Start by the person means output on once nothing holds it off
         launch()
+    }
+
+    func holdOutput(_ holder: String) {
+        if outputHolds.isEmpty { resumeOutput = !outputOff }
+        outputHolds.insert(holder)
+        send(.outputOff)
+    }
+
+    /// `turnOn`: output on after the last release even if it was off before (setup's "Start playing").
+    func releaseOutput(_ holder: String, turnOn: Bool = false) {
+        guard outputHolds.remove(holder) != nil else { return }
+        if turnOn { resumeOutput = true }
+        guard outputHolds.isEmpty else { return }
+        outputOff = !resumeOutput       // also for an engine that is restarting right now
+        if resumeOutput { send(.outputOn) }
     }
 
     private func launch() {
@@ -103,7 +126,7 @@ final class EngineSupervisor {
         }
         let child = Process(), stdin = Pipe(), stdout = Pipe()
         child.executableURL = executable
-        child.arguments = (override == nil ? ["--engine"] : []) + (holdOutputOff || outputOff ? ["--output-off"] : [])
+        child.arguments = (override == nil ? ["--engine"] : []) + (holdsOutput || outputOff ? ["--output-off"] : [])
         child.standardInput = stdin
         child.standardOutput = stdout           // stderr stays inherited
         do { try child.run() } catch {
@@ -116,6 +139,7 @@ final class EngineSupervisor {
         // The child has its own copies of the other ends; without this, the reader below would never see the end of the stream.
         try? stdout.fileHandleForWriting.close(); try? stdin.fileHandleForReading.close()
         note("engine started (pid \(child.processIdentifier))")
+        if wantsPoses { send(.poseOn) }
         setStatus(.running)
         let reader = stdout.fileHandleForReading
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -176,6 +200,7 @@ final class EngineSupervisor {
         guard mine == generation else { return }
         for line in lines {
             let message = EngineMessage(line: line)
+            if case .pose(let values) = message { onPose?(values); continue }
             switch message {
             case .state(let next):
                 state = next

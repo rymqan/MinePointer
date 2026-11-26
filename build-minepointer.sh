@@ -23,7 +23,7 @@ xcrun swiftc -target arm64-apple-macos14.0 -swift-version 5 -O \
     Sources/MinePointer/*.swift Sources/MinePointer/App/*.swift \
     $v/AirPointer/Session/ClosedCaseAirPods.swift $v/AirPointer/Interface/RemoteKit.swift $v/AirPointer/Interface/AccessibilityGuide.swift \
     -o "$out/MinePointer" \
-    -framework AppKit -framework Carbon -framework CoreBluetooth -framework IOBluetooth -framework ServiceManagement
+    -framework AppKit -framework Carbon -framework CoreBluetooth -framework IOBluetooth -framework ServiceManagement -framework SceneKit
 app=build/MinePointer.app
 rm -rf $app && mkdir -p $app/Contents/MacOS $app/Contents/Helpers $app/Contents/Resources
 mv "$out/MinePointer" $app/Contents/MacOS/

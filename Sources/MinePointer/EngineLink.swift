@@ -1,7 +1,7 @@
 import Foundation
 
 // The link between the UI app and its engine child (`MinePointer --engine`): one line per message.
-// Engine → UI on the child's stdout: "@state", "@prompt", "@gesture", "@calibrated", "@error" lines, tab-separated; any other line
+// Engine → UI on the child's stdout: "@state", "@prompt", "@gesture", "@calibrated", "@error", "@pose" lines, tab-separated; any other line
 // is a log line. UI → engine on the child's stdin: EngineCommand raw values. The engine quits (all buttons released) on stdin EOF.
 
 /// What the UI shows: the session text, the mode and the held buttons, the last gesture (a new seq shows it again).
@@ -35,6 +35,7 @@ enum EngineMessage: Equatable {
     case gesture(EngineGesture)
     case calibrated
     case error(String)                  // fatal: the engine exits after it; the text names the cause and the next step
+    case pose([Double])                 // the sandbox's case pose (CasePoseTracker): x, y, z (m), then the rotation qx, qy, qz, qw; only after `pose on`
     case log(String)
 
     init(line: String) {
@@ -50,6 +51,9 @@ enum EngineMessage: Equatable {
             self = .gesture(g)
         case "@calibrated" where p.count == 1: self = .calibrated
         case "@error" where p.count == 2: self = .error(p[1])
+        case "@pose" where p.count == 8:
+            let values = p.dropFirst().compactMap(Double.init)
+            self = values.count == 7 ? .pose(values) : .log(line)
         default: self = .log(line)
         }
     }
@@ -64,6 +68,7 @@ enum EngineMessage: Equatable {
         case .gesture(let g): return "@gesture\t" + g.rawValue
         case .calibrated: return "@calibrated"
         case .error(let text): return "@error\t" + clean(text)
+        case .pose(let values): return (["@pose"] + values.map { String(format: "%.4f", $0) }).joined(separator: "\t")
         case .log(let text): return clean(text)
         }
     }
@@ -73,6 +78,8 @@ enum EngineCommand: String {
     case recalibrate
     case outputOn = "output on"
     case outputOff = "output off"
+    case poseOn = "pose on"             // the sandbox is open: send @pose lines
+    case poseOff = "pose off"
     case quit
 }
 
@@ -125,6 +132,8 @@ func engineLinkSelfTest() {
     precondition(EngineMessage(line: "@gesture\tnope") == .log("@gesture\tnope"))
     precondition(EngineMessage(line: "@state\tx") == .log("@state\tx") && EngineMessage(line: "[12:00] hello") == .log("[12:00] hello"))
     precondition(EngineMessage(line: "@calibrated") == .calibrated && EngineMessage(line: "@error\tno AirPods") == .error("no AirPods"))
+    precondition(EngineMessage(line: EngineMessage.pose([0, -0.01, 0.02, 0, 0, 0.7071, 0.7071]).line) == .pose([0, -0.01, 0.02, 0, 0, 0.7071, 0.7071]))
+    precondition(EngineMessage(line: "@pose\t1\t2") == .log("@pose\t1\t2") && EngineCommand(rawValue: "pose on") == .poseOn)
     precondition(EngineCommand(rawValue: "output off") == .outputOff && EngineCommand(rawValue: "quit") == .quit && EngineCommand(rawValue: "nope") == nil)
     precondition(engineErrorText("AirPods not found").hasPrefix("AirPods not found: pair them"))
     precondition(engineErrorText(ClosedCaseAirPods.bluetoothDenied).contains("Privacy & Security → Bluetooth"))

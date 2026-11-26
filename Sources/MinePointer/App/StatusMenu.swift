@@ -88,6 +88,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         add(menu, "Open MinePointer", #selector(showHome))
+        add(menu, "Sandbox…", #selector(showSandbox))
         add(menu, "Setup…", #selector(showSetup))
         add(menu, "Settings…", #selector(showSettings), key: ",")
         add(menu, "Open Logs Folder", #selector(openLogs))
@@ -108,13 +109,14 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func toggleEngine() {
-        if supervisor.status == .running { supervisor.stop() } else { supervisor.holdOutputOff = false; supervisor.start() }
+        if supervisor.status == .running { supervisor.stop() } else { supervisor.start() }
     }
     @objc private func recalibrate() { supervisor.send(.recalibrate) }
     @objc private func toggleOutput() { supervisor.send(supervisor.state.output ? .outputOff : .outputOn) }
     @objc private func toggleIndicator() { app.setIndicator(!app.indicator.isEnabled) }
     @objc private func showHome() { app.showHome() }
     @objc private func showSetup() { app.showSetup() }
+    @objc private func showSandbox() { app.showSandbox() }
     @objc private func showSettings() { app.showSettings() }
     @objc private func openLogs() { NSWorkspace.shared.open(logsFolder) }
     @objc private func toggleLaunchAtLogin() { app.setLaunchAtLogin(!LaunchAtLogin.isEnabled) }
