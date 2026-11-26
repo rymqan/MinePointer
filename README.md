@@ -29,7 +29,7 @@ Hold the closed case in your right hand: lid on top, the back in your palm, the 
 | <kbd>⌃⌥Space</kbd> | Panic: release all buttons and stop output | |
 | <kbd>⌃⌥C</kbd> | Recalibrate | |
 
-At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly. The steps show in a small panel at the top right of the screen.
+At start, MinePointer calibrates the grip: hold the case still, then twist it clockwise three times, then tilt it slowly. The steps show in the MinePointer window, with an animation of the case, and in the on-screen indicator if you turn it on.
 
 The AirPods firmware ends the stream after about 30 minutes. Open and close the case lid to start a new session; MinePointer reconnects on its own.
 

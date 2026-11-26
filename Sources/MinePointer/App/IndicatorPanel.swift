@@ -14,7 +14,7 @@ final class IndicatorPanel {
     private var shownSeq = 0
     private var gestureUntil = 0.0
     private var timer: Timer?
-    private var prompt = ""                 // the calibration step at every start: the only place it shows over the game
+    private var prompt = ""                 // the calibration step, shown while the indicator is on
 
     init(supervisor: EngineSupervisor) {
         self.supervisor = supervisor
@@ -51,10 +51,8 @@ final class IndicatorPanel {
     func setEnabled(_ on: Bool) { enabled = on; refresh() }
 
     private var calibrating: Bool { supervisor.state.mode == "calibrating" }
-    /// Calibration and a dropped stream show even with the indicator off: the grip wizard runs at every start and the lid
-    /// prompt comes every ~30 min, usually with the game in front, where the panel is the only thing visible.
-    private var needsPerson: Bool { calibrating || ["reconnecting", "no stream"].contains(supervisor.state.mode) }
-    private var wanted: Bool { (enabled || needsPerson) && supervisor.status == .running }
+    /// Off means off, also while calibrating or reconnecting: the MinePointer window shows those steps with the case art.
+    private var wanted: Bool { enabled && supervisor.status == .running }
 
     private func refresh() {
         if wanted {
