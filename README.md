@@ -39,7 +39,7 @@ The AirPods firmware ends the stream after about 30 minutes. Open and close the 
 2. Open MinePointer. The DMG is signed but not notarized, so macOS blocks the first launch: open System Settings → Privacy & Security, scroll to the message about MinePointer and click **Open Anyway**. This is needed once.
 3. The setup window walks you through the rest: Bluetooth and Accessibility permissions (Input Monitoring is optional), choosing your AirPods, connecting the case, the grip calibration and a short gesture check. MinePointer does not move the cursor or click during setup.
 
-MinePointer then lives in the menu bar: start and stop, recalibrate, output on and off, the on-screen indicator, Settings (camera speed, Minecraft sensitivity, gesture thresholds, scroll direction, launch at login) and the logs folder.
+MinePointer then lives in the menu bar: start and stop, recalibrate, output on and off, the on-screen indicator, Settings (camera speed, Minecraft sensitivity, gesture thresholds, scroll direction, launch at login, app icon) and the logs folder.
 
 Requirements: macOS 14 or later on Apple Silicon, AirPods paired with the Mac, Minecraft Java Edition.
 
@@ -95,7 +95,7 @@ This repository is a fork of AirPointer: its files stay where upstream keeps the
 | Path | Contents |
 |---|---|
 | `Sources/MinePointer` | MinePointer: the engine, and the app in `App/` |
-| `build-minepointer.sh`, `package-minepointer.sh`, `Packaging/` | Build, DMG, version and icon |
+| `build-minepointer.sh`, `package-minepointer.sh`, `Packaging/` | Build, DMG, version, and the icons (SVG sources in `Packaging/Icon/`, built by `make-icon.swift`) |
 | `tools/` | MinePointer's recording and log tools |
 | `Sources/AirPointer`, `Sources/ClosedCase*` | AirPointer; MinePointer compiles its helpers, `ClosedCaseAirPods.swift`, `RemoteKit.swift` and `AccessibilityGuide.swift` |
 | `Assets/`, `Docs/`, `Scripts/`, `Tests/`, `build.sh` | AirPointer, unused by MinePointer |

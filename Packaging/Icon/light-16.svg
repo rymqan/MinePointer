@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- "light" variant drawn for the 16 px slot: whole pixels, flat colours, 1 px per face pixel. -->
+  <rect x="1" y="1" width="14" height="14" rx="3" fill="#eceff1"/>
+  <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" fill="none" stroke="#0000001a"/>
+  <rect x="3" y="4" width="10" height="9" rx="2.5" fill="#3f9a36"/>
+  <g fill="#0f2412" shape-rendering="crispEdges">
+    <rect x="5" y="6" width="1" height="1"/>
+    <rect x="6" y="6" width="1" height="1"/>
+    <rect x="9" y="6" width="1" height="1"/>
+    <rect x="10" y="6" width="1" height="1"/>
+    <rect x="5" y="7" width="1" height="1"/>
+    <rect x="6" y="7" width="1" height="1"/>
+    <rect x="9" y="7" width="1" height="1"/>
+    <rect x="10" y="7" width="1" height="1"/>
+    <rect x="7" y="8" width="1" height="1"/>
+    <rect x="8" y="8" width="1" height="1"/>
+    <rect x="6" y="9" width="1" height="1"/>
+    <rect x="7" y="9" width="1" height="1"/>
+    <rect x="8" y="9" width="1" height="1"/>
+    <rect x="9" y="9" width="1" height="1"/>
+    <rect x="6" y="10" width="1" height="1"/>
+    <rect x="7" y="10" width="1" height="1"/>
+    <rect x="8" y="10" width="1" height="1"/>
+    <rect x="9" y="10" width="1" height="1"/>
+    <rect x="6" y="11" width="1" height="1"/>
+    <rect x="9" y="11" width="1" height="1"/>
+  </g>
+</svg>

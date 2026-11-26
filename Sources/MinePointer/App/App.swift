@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
+        AppIconChoice.restoreAtLaunch()
         _ = indicator
         statusMenu = StatusMenu(app: self)
         if let step = ProcessInfo.processInfo.environment["MINEPOINTER_SETUP_STEP"].flatMap(Int.init) {

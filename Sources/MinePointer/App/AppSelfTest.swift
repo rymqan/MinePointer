@@ -1,6 +1,6 @@
 import Foundation
 
-/// Offline checks of the UI's pure logic: restart policy, slider mappings, session texts, setup flow, menu icon.
+/// Offline checks of the UI's pure logic: restart policy, slider mappings, session texts, setup flow, menu icon, app icon.
 func appSelfTest() {
     // Restart policy: a requested stop does nothing, an @error is shown, anything else restarts up to 3 times in 120 s.
     precondition(engineExitAction(requested: true, error: nil, restarts: [], now: 10) == .none)
@@ -84,5 +84,14 @@ func appSelfTest() {
     precondition(homeGuidance(.running, EngineState(session: "streaming", mode: "calibrating"), prompt: "Make 3 twists") == "Make 3 twists")
     precondition(homeGuidance(.running, EngineState(session: "streaming"), prompt: "").hasPrefix("Ready"))
     precondition(homeGuidance(.failed("No AirPods"), EngineState(), prompt: "") == "No AirPods")
-    print("PASS: app restart policy, settings mappings, session texts, setup flow, home guidance")
+    // App icon: an unknown or missing config value falls back to the bundle's own icon; a built bundle carries every icon.
+    precondition(AppIconChoice.from("graphite") == .graphite && AppIconChoice.from(nil) == .green && AppIconChoice.from("x") == .green)
+    precondition(settingsDefaults()[AppIconChoice.configKey] as? String == AppIconChoice.green.rawValue, "reset restores the default icon")
+    if Bundle.main.bundleURL.pathExtension == "app" {
+        for name in AppIconChoice.allCases.map({ "AppIcon-\($0.rawValue)" }) + ["AppIcon"] {
+            precondition(Bundle.main.url(forResource: name, withExtension: "icns") != nil, "\(name).icns missing from the bundle")
+        }
+        precondition(Bundle.main.url(forResource: "MenuBarIcon", withExtension: "svg") != nil, "MenuBarIcon.svg missing from the bundle")
+    }
+    print("PASS: app restart policy, settings mappings, session texts, setup flow, home guidance, app icon")
 }
