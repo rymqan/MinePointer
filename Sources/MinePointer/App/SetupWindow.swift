@@ -105,6 +105,11 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         case .message(let message): flow.apply(message)
         case .status: break
         }
+        for tile in flow.lit where !before.lit.contains(tile) {
+            guard let title = Self.gestureTiles.first(where: { $0.0 == tile })?.2 else { continue }
+            NSAccessibility.post(element: window, notification: .announcementRequested,
+                                 userInfo: [.announcement: "\(title) recognized", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        }
         if case .message(.progress) = event { demo.ring = flow.progress; return }     // many a second: the ring only
         if flow.step != before.step {
             supervisor.note("setup step: \(flow.step)")
@@ -149,15 +154,18 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         var primaryEnabled = true
         var primaryAction: () -> Void = {}
         var extras: [(title: String, action: () -> Void)] = []
+        var isError = false
     }
 
     private func render() {
         actions.removeAll()
         for view in page.arrangedSubviews { page.removeArrangedSubview(view); view.removeFromSuperview() }
         let spec = pageSpec()
-        page.addArrangedSubview(rkSymbolView(spec.symbol, 46, .labelColor, .light))
+        let symbol = rkSymbolView(spec.symbol, 46, .labelColor, .light)
+        symbol.setAccessibilityElement(false)       // decorative: the title says the same
+        page.addArrangedSubview(symbol)
         let title = rkTitle(spec.title, 26, align: .center)
-        let body = rkWrap(spec.body, 14, align: .center)
+        let body = spec.isError ? rkWrap(spec.body, 14, .labelColor, align: .center) : rkWrap(spec.body, 14, align: .center)
         for label in [title, body] { page.addArrangedSubview(label); label.widthAnchor.constraint(equalTo: page.widthAnchor).isActive = true }
         page.setCustomSpacing(8, after: title)
         page.setCustomSpacing(24, after: body)
@@ -207,14 +215,14 @@ final class SetupWindow: NSObject, NSWindowDelegate {
 
     private func welcomePage() -> Page {
         let list = rkVStack([
-            row(symbolName("airpods.gen4", "airpods"), "AirPods 4 with Active Noise Cancellation, or another model AirPointer supports. AirPods Pro (1st generation) don’t work."),
+            row(symbolName("airpods.gen4", "airpods"), "AirPods 4 with Active Noise Cancellation. Other AirPods with a motion sensor in the earbuds may work; AirPods Pro (1st generation) don’t."),
             row(symbolName("gamecontroller", "cursorarrow"), "Minecraft Java Edition."),
             row(symbolName("keyboard"), "Your keyboard stays as it is: it still moves and jumps."),
             row(symbolName("speaker.slash", "speaker"), "While MinePointer is connected, your Mac plays sound itself instead of the AirPods."),
         ], spacing: 10, align: .leading)
         return Page(symbol: symbolName("airpods.gen4", "airpods"), title: "Aim with your AirPods case",
                     body: "Hold the closed case in your right hand. Turn it slowly to look around, move it sharply to click.",
-                    content: list, primary: "Get started", primaryAction: next())
+                    content: list, primary: "Get Started", primaryAction: next())
     }
 
     private func permissionsPage() -> Page {
@@ -235,10 +243,10 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         }
         let rows = rkVStack([
             permissionRow(symbolName("dot.radiowaves.left.and.right", "antenna.radiowaves.left.and.right"), "Bluetooth", "To reach your AirPods.", p.bluetooth,
-                          p.bluetoothAsked ? "Open Settings" : "Allow", btAction),
+                          p.bluetoothAsked ? "Open System Settings" : "Allow", btAction),
             permissionRow(symbolName("cursorarrow.click", "cursorarrow"), "Accessibility", "To move the camera and click in Minecraft.", p.accessibility, "Allow", axAction),
             permissionRow(symbolName("keyboard"), "Input Monitoring", "Recommended for the hotkeys (⌃⌥Space and ⌃⌥C). MinePointer works without it.", p.inputMonitoring,
-                          inputAsked ? "Open Settings" : "Allow", inputAction),
+                          inputAsked ? "Open System Settings" : "Allow", inputAction),
         ], spacing: 10, align: .leading)
         return Page(symbol: symbolName("lock.shield", "lock"), title: "Allow access",
                     body: "MinePointer needs Bluetooth and Accessibility. Each one shows as allowed here the moment you turn it on.",
@@ -273,10 +281,16 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         let status = supervisor.status
         var page = Page(symbol: symbolName("antenna.radiowaves.left.and.right", "dot.radiowaves.left.and.right"), title: "Connect your case", body: "")
         if let failure = failureText(status) {
+            page.symbol = symbolName("exclamationmark.triangle")
+            page.title = "Couldn’t Connect"
             page.body = failure
-            page.primary = "Try again"
+            page.isError = true
+            page.primary = "Try Again"
             page.primaryAction = { [weak self] in self?.supervisor.start() }
-            if status == .crashLoop { page.extras = [("Open Logs Folder", { NSWorkspace.shared.open(logsFolder) })] }
+            switch status {
+            case .crashLoop, .failed: page.extras = [("Open Logs Folder", { NSWorkspace.shared.open(logsFolder) })]
+            default: break
+            }
             return page
         }
         let raw = supervisor.state.session
@@ -301,9 +315,13 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     private func calibratePage() -> Page {
         var page = Page(symbol: symbolName("gyroscope", "dot.viewfinder"), title: "Calibrate", body: "Follow the instruction below and keep holding the case the way you’ll play.")
         if let failure = failureText(supervisor.status) {
+            page.symbol = symbolName("exclamationmark.triangle")
+            page.title = "Calibration Stopped"
             page.body = failure
-            page.primary = "Try again"
+            page.isError = true
+            page.primary = "Try Again"
             page.primaryAction = { [weak self] in self?.go(to: .connect) }
+            page.extras = logsLink(supervisor.status)
             return page
         }
         let stack = rkVStack(spacing: 14, align: .centerX)
@@ -311,7 +329,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             if let n = SetupFlow.calibrationNumber(prompt), let clip = SetupFlow.calibrationClip(n) {
                 demo.clip = clip
                 demo.ring = flow.progress
-                demo.setAccessibilityLabel(prompt)
+                demo.setAccessibilityLabel(SessionText.prompt(prompt))
                 stack.addArrangedSubview(demo)
                 demo.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             }
@@ -320,26 +338,28 @@ final class SetupWindow: NSObject, NSWindowDelegate {
                 chip.set("Step \(n) of \(SetupFlow.calibrationSteps)", dot: false)
                 stack.addArrangedSubview(chip)
             }
-            let text = rkTitle(prompt, 22, align: .center)
+            let text = rkTitle(SessionText.prompt(prompt), 22, align: .center)
             stack.addArrangedSubview(text)
             text.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         } else {
             stack.addArrangedSubview(rkLabel("Waiting for the first instruction…", 15, .regular, .secondaryLabelColor))
         }
         page.content = stack
-        page.extras = [("Recalibrate", { [weak self] in self?.supervisor.send(.recalibrate) })]
+        page.extras = [("Start Over", { [weak self] in self?.supervisor.send(.recalibrate) })]
         return page
     }
 
+    private static let gestureTiles: [(GestureTile, String, String, String)] = [
+        (.jerkDown, symbolName("arrow.down.to.line", "arrow.down.circle"), "Jerk down", "Left click"),
+        (.shake, symbolName("arrow.up.arrow.down", "hand.draw"), "Shake", "Hold left button"),
+        (.jerkUp, symbolName("arrow.up.to.line", "arrow.up.circle"), "Jerk up", "Right click"),
+        (.pull, symbolName("arrow.down.backward.circle", "arrow.down.circle"), "Pull toward you", "Hold right button"),
+        (.twist, symbolName("rotate.right", "arrow.clockwise"), "Twist", "Next or previous slot"),
+        (.pause, symbolName("pause.circle", "pause.fill"), "Lay it flat and still", "Pause"),
+    ]
+
     private func gesturesPage() -> Page {
-        let tiles: [(GestureTile, String, String, String)] = [
-            (.jerkDown, symbolName("arrow.down.to.line", "arrow.down.circle"), "Jerk down", "Left click"),
-            (.shake, symbolName("arrow.up.arrow.down", "hand.draw"), "Shake", "Hold left button"),
-            (.jerkUp, symbolName("arrow.up.to.line", "arrow.up.circle"), "Jerk up", "Right click"),
-            (.pull, symbolName("arrow.down.backward.circle", "arrow.down.circle"), "Pull toward you", "Hold right button"),
-            (.twist, symbolName("rotate.right", "arrow.clockwise"), "Twist", "Next or previous slot"),
-            (.pause, symbolName("pause.circle", "pause.fill"), "Lay it flat and still", "Pause"),
-        ]
+        let tiles = Self.gestureTiles
         func tileView(_ t: (GestureTile, String, String, String)) -> NSView {
             let lit = flow.lit.contains(t.0)
             let surface = RemoteSurface(lit ? HomePalette.ink : HomePalette.raised, radius: 12)
@@ -387,8 +407,13 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         var page = Page(symbol: symbolName("hand.tap", "hand.point.up"), title: "Try the gestures",
                         body: "Each tile lights up when MinePointer feels the gesture. Nothing is clicked in this window.",
                         content: stack, primary: "Done", primaryAction: next())
-        if let failure = failureText(supervisor.status) { page.body = failure }
         page.extras = [("Skip", next())]
+        if let failure = failureText(supervisor.status) {
+            page = Page(symbol: symbolName("exclamationmark.triangle"), title: "Connection Lost", body: failure, isError: true)
+            page.primary = "Try Again"
+            page.primaryAction = { [weak self] in self?.go(to: .connect) }
+            page.extras = logsLink(supervisor.status) + [("Skip", next())]
+        }
         return page
     }
 
@@ -401,8 +426,8 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             row(symbolName("exclamationmark.octagon", "exclamationmark.triangle"), "⌃⌥Space turns output off and on at any time. ⌃⌥C recalibrates."),
         ], spacing: 10, align: .leading)
         return Page(symbol: symbolName("checkmark.circle"), title: "You’re ready", body: "A few things worth knowing before you play.",
-                    content: tips, primary: "Start playing", primaryAction: { [weak self] in self?.finish() },
-                    extras: [("Open Settings", { [weak self] in self?.app.showSettings() })])
+                    content: tips, primary: "Start Playing", primaryAction: { [weak self] in self?.finish() },
+                    extras: [("MinePointer Settings", { [weak self] in self?.app.showSettings() })])
     }
 
     private func finish() {
@@ -423,10 +448,15 @@ final class SetupWindow: NSObject, NSWindowDelegate {
 
     // MARK: pieces
 
+    /// "Open Logs Folder" where the crash-loop text points to it.
+    private func logsLink(_ status: EngineStatus) -> [(title: String, action: () -> Void)] {
+        status == .crashLoop ? [("Open Logs Folder", { NSWorkspace.shared.open(logsFolder) })] : []
+    }
+
     private func failureText(_ status: EngineStatus) -> String? {
         switch status {
         case .failed(let text): return text
-        case .crashLoop: return "The engine keeps crashing. The log is at \(EngineSupervisor.logURL.path)."
+        case .crashLoop: return "MinePointer’s engine stopped several times in a row. Press Try Again; if it keeps happening, open the logs folder."
         case .stopped, .running: return nil
         }
     }
@@ -441,6 +471,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     /// A symbol in a fixed-width column, so the texts beside a list of icons line up.
     private func icon(_ symbol: String, _ size: CGFloat, _ color: NSColor) -> NSView {
         let view = rkSymbolView(symbol, size, color)
+        view.setAccessibilityElement(false)
         view.imageAlignment = .alignCenter
         view.widthAnchor.constraint(equalToConstant: 28).isActive = true
         return view
@@ -476,7 +507,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         } else if selected == pair {
             let chip = StatusChip(); chip.set("Selected", dot: false); trailing = chip
         } else {
-            trailing = actions.bind(RemoteButton("Use these", style: .secondary, height: 32)) { [weak self] _ in
+            trailing = actions.bind(RemoteButton("Use These", style: .secondary, height: 32)) { [weak self] _ in
                 guard let self else { return }
                 try? ClosedCaseAirPods.save(pair)
                 selected = pair

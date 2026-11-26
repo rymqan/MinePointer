@@ -88,8 +88,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         add(menu, "Open MinePointer", #selector(showHome))
-        add(menu, "Sandbox…", #selector(showSandbox))
-        add(menu, "Setup…", #selector(showSetup))
+        add(menu, "Sandbox", #selector(showSandbox))
+        add(menu, "Run Setup Again", #selector(showSetup))
         add(menu, "Settings…", #selector(showSettings), key: ",")
         add(menu, "Open Logs Folder", #selector(openLogs))
         add(menu, "Launch at Login", #selector(toggleLaunchAtLogin)).state = LaunchAtLogin.isEnabled ? .on : .off

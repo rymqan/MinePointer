@@ -148,6 +148,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
         popup.addItems(withTitles: ["Clockwise twist = next slot", "Clockwise twist = previous slot"])
         popup.translatesAutoresizingMaskIntoConstraints = false
+        popup.setAccessibilityLabel("Scroll direction")
         actions.bind(popup) { [weak self] control in self?.change("scroll_next_sign", control.indexOfSelectedItem == 0 ? -1 : 1) }
         reloaders.append { popup.selectItem(at: Config.load().scrollNextSign < 0 ? 0 : 1) }
         let scroll = rkVStack([rkLabel("Scroll direction", 13, .semibold), popup], spacing: 6, align: .leading)
@@ -163,7 +164,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                               read: { LaunchAtLogin.isEnabled }, write: { [weak self] on in self?.app.setLaunchAtLogin(on) })
         let record = switchRow("Record raw sensor sessions", "For debugging; about 100 MB per hour.", key: "record_sessions")
         let icon = appIconRow()
-        let reset = actions.bind(RemoteButton("Reset to defaults", style: .secondary, height: 32)) { [weak self] _ in self?.resetDefaults() }
+        let reset = actions.bind(RemoteButton("Reset to Defaults…", style: .secondary, height: 32)) { [weak self] _ in self?.confirmReset() }
         let openConfig = actions.bind(RemoteButton("Open config.json", style: .secondary, height: 32)) { _ in
             Config.writeDefaultsIfMissing()
             NSWorkspace.shared.open(configURL)
@@ -172,6 +173,18 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let note = rkWrap("Reset only changes the settings on these tabs; your calibration stays. config.json holds every other setting.", 12)
         let paths = rkVStack([rkLabel("Folders", 13, .semibold), pathRow("Config", configURL), pathRow("Logs", logsFolder)], spacing: 6, align: .leading)
         return scrollPage([icon, indicator, login, record, buttons, note, paths])
+    }
+
+    private func confirmReset() {
+        let alert = NSAlert()
+        alert.messageText = "Reset settings to their defaults?"
+        alert.informativeText = "This changes the settings on these tabs back to their defaults. Your calibration stays."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.resetDefaults() }
+        }
     }
 
     private func resetDefaults() {
@@ -189,18 +202,22 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let slider = NSSlider(value: setting.defaultShown, minValue: setting.lower, maxValue: setting.upper, target: nil, action: nil)
         slider.trackFillColor = HomePalette.ink
         slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.setAccessibilityLabel(setting.title)
+        if let caption = setting.caption { slider.setAccessibilityHelp(caption) }
         let value = rkLabel("", 13, .medium)
         value.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
         value.alignment = .right
         actions.bind(slider) { [weak self] control in
             let shown = setting.config(fromShown: control.doubleValue)
             value.stringValue = setting.text(setting.shown(fromConfig: shown))
+            control.setAccessibilityValueDescription(value.stringValue)
             self?.change(setting.key, shown)
         }
         reloaders.append {
             let shown = setting.shown(fromConfig: Config.load()[keyPath: setting.path])
             slider.doubleValue = shown
             value.stringValue = setting.text(shown)
+            slider.setAccessibilityValueDescription(value.stringValue)
         }
         var views: [NSView] = [rkHStack([rkLabel(setting.title, 13, .semibold), rkSpacer(), value], spacing: 8), slider]
         if let caption = setting.caption { views.append(rkWrap(caption, 12)) }
@@ -227,6 +244,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private func appIconRow() -> NSView {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
         popup.translatesAutoresizingMaskIntoConstraints = false
+        popup.setAccessibilityLabel("App icon")
         for choice in AppIconChoice.allCases {
             popup.addItem(withTitle: choice.title)
             let preview = choice.image?.copy() as? NSImage

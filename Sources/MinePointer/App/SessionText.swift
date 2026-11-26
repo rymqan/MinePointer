@@ -42,6 +42,13 @@ enum SessionText {
         return state.session == "streaming" ? mode : "\(mode) · \(session(state.session))"
     }
 
+    /// A calibration prompt for a page that already says it is calibrating: without the engine's "Calibration: " prefix.
+    static func prompt(_ raw: String) -> String {
+        guard raw.hasPrefix("Calibration: ") else { return raw }
+        let rest = raw.dropFirst(13)
+        return rest.prefix(1).uppercased() + rest.dropFirst()
+    }
+
     /// True while the session waits for the person to open the lid.
     static func waitsForLid(_ raw: String) -> Bool { raw == "waiting: open the case lid" }
 }

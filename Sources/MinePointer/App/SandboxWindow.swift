@@ -21,6 +21,7 @@ final class SandboxWindow: NSObject, NSWindowDelegate {
                           styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
         window.title = "Sandbox"
+        window.titleVisibility = .hidden        // the page shows the title
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
@@ -65,6 +66,10 @@ final class SandboxWindow: NSObject, NSWindowDelegate {
         case .message(.state(let state)) where state.seq != gestureSeq:
             gestureSeq = state.seq
             gesture.stringValue = state.gesture
+            if !state.gesture.isEmpty {
+                NSAccessibility.post(element: window, notification: .announcementRequested,
+                                     userInfo: [.announcement: state.gesture, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            }
             let shown = state.seq
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 if self?.gestureSeq == shown { self?.gesture.stringValue = " " }
