@@ -69,7 +69,7 @@ final class IndicatorPanel {
 
     private func render() {
         let state = supervisor.state
-        let text = calibrating ? "calibrating · " + (prompt.isEmpty ? SessionText.session(state.session) : prompt)     // before the stream: the lid step
+        let text = calibrating ? "calibrating · " + (prompt.isEmpty ? SessionText.session(state.session) : SessionText.prompt(prompt))     // before the stream: the lid step
             : state.mode == "reconnecting" ? SessionText.line(state)
             : state.text(showGesture: uptimeNow() < gestureUntil)
         guard text != label.stringValue else { return }

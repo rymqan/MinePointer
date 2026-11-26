@@ -36,6 +36,8 @@ func appSelfTest() {
     precondition(SessionText.session("session ended: stream lost") == "Session ended (stream lost)")
     precondition(SessionText.session("AirPods are in use elsewhere") == "AirPods are in use elsewhere", "unknown text passes through")
     precondition(SessionText.mode("output off") == "Output off" && SessionText.mode("") == "")
+    precondition(SessionText.prompt("Calibration: hold the case still in your usual grip…") == "Hold the case still in your usual grip…")
+    precondition(SessionText.prompt("Slowly raise and lower the far end of the case twice") == "Slowly raise and lower the far end of the case twice")
     precondition(SessionText.line(EngineState(session: "streaming", mode: "")) == "Connected")
     precondition(SessionText.line(EngineState(session: "streaming", mode: "paused")) == "Paused (case flat)")
     precondition(SessionText.line(EngineState(session: "connecting", mode: "reconnecting")) == "Reconnecting · Connecting to your AirPods")
@@ -98,10 +100,11 @@ func appSelfTest() {
     precondition(SetupFlow.canContinue(.permissions, permissions: permissions, hasAirPods: false), "Input Monitoring is not required")
     precondition(!SetupFlow.canContinue(.airpods, permissions: permissions, hasAirPods: false) && SetupFlow.canContinue(.airpods, permissions: permissions, hasAirPods: true))
     // Main window guidance.
-    precondition(homeGuidance(.stopped, EngineState(), prompt: "").hasPrefix("Stopped"))
+    precondition(homeGuidance(.stopped, EngineState(), prompt: "").hasPrefix("Press Start"))
     precondition(homeGuidance(.running, EngineState(session: "waiting: open the case lid", mode: "calibrating"), prompt: "") == "Open the case lid, then close it again.",
                  "the lid wait wins over the calibrating mode")
     precondition(homeGuidance(.running, EngineState(session: "streaming", mode: "calibrating"), prompt: "Make 3 twists") == "Make 3 twists")
+    precondition(homeGuidance(.running, EngineState(session: "streaming", mode: "calibrating"), prompt: "Calibration: hold the case still") == "Step 1 of 3: Hold the case still")
     precondition(homeGuidance(.running, EngineState(session: "streaming"), prompt: "").hasPrefix("Ready"))
     precondition(homeGuidance(.failed("No AirPods"), EngineState(), prompt: "") == "No AirPods")
     // App icon: an unknown or missing config value falls back to the bundle's own icon; a built bundle carries every icon.

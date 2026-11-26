@@ -7,14 +7,17 @@ import AppKit
 /// The sentence under the status chip: the next thing to do.
 func homeGuidance(_ status: EngineStatus, _ state: EngineState, prompt: String) -> String {
     switch status {
-    case .stopped: return "Stopped. Press Start to connect your case."
+    case .stopped: return "Press Start to connect your case."
     case .failed(let text): return text
-    case .crashLoop: return "The engine keeps crashing. The log is at \(EngineSupervisor.logURL.path)."
+    case .crashLoop: return "MinePointer’s engine stopped several times in a row. Press Start to try again; if it keeps happening, open the logs folder."
     case .running: break
     }
     if SessionText.waitsForLid(state.session) { return "Open the case lid, then close it again." }
     if state.mode == "calibrating" {
-        return prompt.isEmpty ? "Put both earbuds in the case, close the lid and hold it in your right hand." : prompt
+        if prompt.isEmpty { return "Put both earbuds in the case, close the lid and hold it in your right hand." }
+        let text = SessionText.prompt(prompt)
+        guard let n = SetupFlow.calibrationNumber(prompt) else { return text }
+        return "Step \(n) of \(SetupFlow.calibrationSteps): \(text)"
     }
     switch state.mode {
     case "output off": return "Output is off: the case moves nothing. Press ⌃⌥Space or Turn Output On."
@@ -72,7 +75,8 @@ final class HomeWindow: NSObject {
         let status = supervisor.status, state = supervisor.state
         let running = status == .running
         let icon = MenuIcon.of(status, state)
-        let chipText = menuStatusText(status, state)
+        var chipText = menuStatusText(status, state)
+        if case .failed = status { chipText = "Stopped" }       // the guidance under the chip holds the error
         let guidance = homeGuidance(status, state, prompt: prompt)
         let art = running ? SetupFlow.caseArt(session: state.session, mode: state.mode, prompt: prompt.isEmpty ? nil : prompt) : nil
         let key = [chipText, guidance, art?.id ?? "", icon.symbol, state.output ? "1" : "0", app.indicator.isEnabled ? "1" : "0"]
@@ -88,8 +92,12 @@ final class HomeWindow: NSObject {
             frame.origin.y -= grow; frame.size.height += grow
             window.setFrame(frame, display: true)
         }
-        page.addArrangedSubview(rkSymbolView(icon.symbol, 44, .labelColor))
-        page.addArrangedSubview(rkTitle("MinePointer", 22, align: .center))
+        let symbol = rkSymbolView(icon.symbol, 44, .labelColor)
+        symbol.setAccessibilityElement(false)       // the chip carries the state
+        page.addArrangedSubview(symbol)
+        let title = rkTitle("MinePointer", 22, align: .center)
+        page.addArrangedSubview(title)
+        title.widthAnchor.constraint(equalTo: page.widthAnchor).isActive = true
         let chip = StatusChip()
         chip.set(chipText, live: icon == .running)
         page.addArrangedSubview(chip)
@@ -132,6 +140,6 @@ final class HomeWindow: NSObject {
         page.addArrangedSubview(rkHStack(links.map { link in
             actions.bind(RemoteButton(link.0, style: .tertiary, height: 28)) { _ in link.1() }
         }, spacing: 4))
-        page.addArrangedSubview(rkLabel("⌃⌥Space turns output off and on · ⌃⌥C recalibrates", 11, .regular, .secondaryLabelColor))
+        page.addArrangedSubview(rkLabel("⌃⌥Space turns output off and on · ⌃⌥C recalibrates", 12, .regular, .secondaryLabelColor))
     }
 }
