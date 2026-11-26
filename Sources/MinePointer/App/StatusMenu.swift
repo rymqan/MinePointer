@@ -1,6 +1,6 @@
 import AppKit
 
-// The menu bar item: an SF Symbol that follows the engine, and the menu.
+// The menu bar item: MinePointer's template (dimmed when stopped) or an SF Symbol for a problem, and the menu.
 
 enum MenuIcon: Equatable {
     case running, attention, error, stopped
@@ -61,9 +61,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     private func updateIcon() {
         let icon = MenuIcon.of(supervisor.status, supervisor.state)
-        let image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: icon.label)
+        let ownIcon = icon == .running || icon == .stopped ? menuBarTemplate : nil
+        let image = ownIcon ?? NSImage(systemSymbolName: icon.symbol, accessibilityDescription: icon.label)
         image?.isTemplate = true
         item.button?.image = image
+        item.button?.appearsDisabled = ownIcon != nil && icon == .stopped
         item.button?.setAccessibilityLabel(icon.label)
     }
 

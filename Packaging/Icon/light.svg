@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- MinePointer app icon, "light" variant, 1024 master. macOS grid: 824 px body, 100 px margins, 185.4 px corners.
+       Smooth case (AirPods 4 front, 560 x 504), pixel Creeper face: 6 x 6 face pixels of 48 px on a 16 px grid. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6e9"/></linearGradient>
+    <linearGradient id="case" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fd05a"/><stop offset="1" stop-color="#3f9a36"/></linearGradient>
+    <radialGradient id="caseShadow"><stop offset="0" stop-opacity="0.18"/><stop offset="1" stop-opacity="0"/></radialGradient>
+    <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <path d="M100 285.4A185.4 185.4 0 0 1 285.4 100H738.6A185.4 185.4 0 0 1 924 285.4V738.6A185.4 185.4 0 0 1 738.6 924H285.4A185.4 185.4 0 0 1 100 738.6Z" transform="translate(0 10)" fill="#000" opacity=".3" filter="url(#tileShadow)"/>
+  <path d="M100 285.4A185.4 185.4 0 0 1 285.4 100H738.6A185.4 185.4 0 0 1 924 285.4V738.6A185.4 185.4 0 0 1 738.6 924H285.4A185.4 185.4 0 0 1 100 738.6Z" fill="url(#tile)"/>
+  <path d="M100 285.4A185.4 185.4 0 0 1 285.4 100H738.6A185.4 185.4 0 0 1 924 285.4V738.6A185.4 185.4 0 0 1 738.6 924H285.4A185.4 185.4 0 0 1 100 738.6Z" fill="none" stroke="#0000001a" stroke-width="2"/>
+  <ellipse cx="512" cy="770" rx="300" ry="38" fill="url(#caseShadow)"/>
+  <rect x="232" y="256" width="560" height="504" rx="176" fill="url(#case)"/>
+  <rect x="248" y="384" width="528" height="8" fill="#2f7a29"/>
+  <g fill="#0f2412" shape-rendering="crispEdges">
+    <rect x="368" y="432" width="48" height="48"/>
+    <rect x="416" y="432" width="48" height="48"/>
+    <rect x="560" y="432" width="48" height="48"/>
+    <rect x="608" y="432" width="48" height="48"/>
+    <rect x="368" y="480" width="48" height="48"/>
+    <rect x="416" y="480" width="48" height="48"/>
+    <rect x="560" y="480" width="48" height="48"/>
+    <rect x="608" y="480" width="48" height="48"/>
+    <rect x="464" y="528" width="48" height="48"/>
+    <rect x="512" y="528" width="48" height="48"/>
+    <rect x="416" y="576" width="48" height="48"/>
+    <rect x="464" y="576" width="48" height="48"/>
+    <rect x="512" y="576" width="48" height="48"/>
+    <rect x="560" y="576" width="48" height="48"/>
+    <rect x="416" y="624" width="48" height="48"/>
+    <rect x="464" y="624" width="48" height="48"/>
+    <rect x="512" y="624" width="48" height="48"/>
+    <rect x="560" y="624" width="48" height="48"/>
+    <rect x="416" y="672" width="48" height="48"/>
+    <rect x="560" y="672" width="48" height="48"/>
+  </g>
+</svg>

@@ -1,107 +1,62 @@
-// Draws MinePointer's app icon: a macOS-style rounded square with a white SF Symbol on a green gradient.
-// Usage: xcrun swift Packaging/make-icon.swift <out.icns>
-// A full-size preview is written next to the output as <out>.png.
+// Builds MinePointer's app icons from the SVG sources in Packaging/Icon (NSImage reads SVG natively on macOS 14+).
+// Usage: xcrun swift Packaging/make-icon.swift [Packaging/Icon] [Packaging]
+// For every variant (<name>.svg master, <name>-16.svg and <name>-32.svg small drawings) it writes <out>/AppIcon-<name>.icns.
+// The 16 and 32 px slots come from the small drawings, the rest from the master.
 import AppKit
 
-guard CommandLine.arguments.count == 2 else {
-    FileHandle.standardError.write(Data("usage: make-icon.swift <out.icns>\n".utf8))
-    exit(2)
-}
-let outPath = CommandLine.arguments[1]
+let args = CommandLine.arguments
+let source = URL(fileURLWithPath: args.count > 1 ? args[1] : "Packaging/Icon")
+let outDir = URL(fileURLWithPath: args.count > 2 ? args[2] : "Packaging")
+let variants = ["green", "light", "graphite"]   // keep in step with AppIconChoice; build-minepointer.sh ships green as AppIcon.icns
+let fm = FileManager.default
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("make-icon: \(message)\n".utf8))
     exit(1)
 }
 
-let symbolName = "airpods.chargingcase.fill"
-guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) else {
-    fail("SF Symbol \(symbolName) is not available on this macOS")
+func svg(_ name: String) -> NSImage {
+    let url = source.appendingPathComponent(name + ".svg")
+    guard let image = NSImage(contentsOf: url) else { fail("cannot read \(url.path)") }
+    return image
 }
 
-/// Renders the icon on a 1024 pt canvas (Big Sur grid: 824 pt body, 100 pt margin) at 1 pixel per point.
-func render1024() -> NSBitmapImageRep {
-    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1024, pixelsHigh: 1024, bitsPerSample: 8,
-                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+/// Draws the SVG at exactly `pixels` × `pixels` and encodes it as PNG.
+func png(_ image: NSImage, pixels: Int) -> Data {
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
+                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                     bytesPerRow: 0, bitsPerPixel: 0),
           let ctx = NSGraphicsContext(bitmapImageRep: rep) else { fail("cannot create bitmap") }
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = ctx
-    defer { NSGraphicsContext.restoreGraphicsState() }
-
-    let body = NSRect(x: 100, y: 100, width: 824, height: 824)
-    let path = NSBezierPath(roundedRect: body, xRadius: 185, yRadius: 185)
-
-    // Soft shadow under the body.
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor(white: 0, alpha: 0.30)
-    shadow.shadowOffset = NSSize(width: 0, height: -12)
-    shadow.shadowBlurRadius = 24
-    shadow.set()
-    NSColor.black.setFill()
-    path.fill()
+    ctx.imageInterpolation = .high
+    image.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels))
     NSGraphicsContext.restoreGraphicsState()
-
-    // Vertical gradient: lighter grass green at the top, dark green at the bottom.
-    let gradient = NSGradient(colors: [NSColor(srgbRed: 0.18, green: 0.58, blue: 0.27, alpha: 1),
-                                       NSColor(srgbRed: 0.05, green: 0.25, blue: 0.13, alpha: 1)])!
-    gradient.draw(in: path, angle: -90)
-
-    // Thin inner highlight along the edge.
-    NSGraphicsContext.saveGraphicsState()
-    path.addClip()
-    NSColor(white: 1, alpha: 0.10).setStroke()
-    let edge = NSBezierPath(roundedRect: body.insetBy(dx: 1.5, dy: 1.5), xRadius: 183, yRadius: 183)
-    edge.lineWidth = 3
-    edge.stroke()
-    NSGraphicsContext.restoreGraphicsState()
-
-    // White symbol in the middle, about half of the body.
-    let config = NSImage.SymbolConfiguration(pointSize: 420, weight: .regular)
-        .applying(.init(paletteColors: [.white]))
-    guard let glyph = symbol.withSymbolConfiguration(config) else { fail("cannot configure symbol") }
-    let target = NSSize(width: 480, height: 480 * glyph.size.height / glyph.size.width)
-    let glyphRect = NSRect(x: 512 - target.width / 2, y: 512 - target.height / 2, width: target.width, height: target.height)
-    NSGraphicsContext.saveGraphicsState()
-    let glyphShadow = NSShadow()
-    glyphShadow.shadowColor = NSColor(white: 0, alpha: 0.25)
-    glyphShadow.shadowOffset = NSSize(width: 0, height: -8)
-    glyphShadow.shadowBlurRadius = 14
-    glyphShadow.set()
-    glyph.draw(in: glyphRect)
-    NSGraphicsContext.restoreGraphicsState()
-    return rep
+    guard let data = rep.representation(using: .png, properties: [:]) else { fail("cannot encode PNG") }
+    return data
 }
 
-let master = render1024()
-let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("MinePointer-\(UUID().uuidString)")
-let iconset = tmp.appendingPathComponent("AppIcon.iconset")
-try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: tmp) }
+let tmp = fm.temporaryDirectory.appendingPathComponent("MinePointer-icon-\(UUID().uuidString)")
+defer { try? fm.removeItem(at: tmp) }
 
-func writePNG(pixels: Int, name: String) throws {
-    guard let ctx = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
-                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-          let cg = master.cgImage else { fail("cannot scale icon") }
-    ctx.interpolationQuality = .high
-    ctx.draw(cg, in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
-    guard let scaled = ctx.makeImage(),
-          let png = NSBitmapImageRep(cgImage: scaled).representation(using: .png, properties: [:]) else { fail("cannot encode PNG") }
-    try png.write(to: iconset.appendingPathComponent(name))
+for name in variants {
+    let master = svg(name), small16 = svg(name + "-16"), small32 = svg(name + "-32")
+    let iconset = tmp.appendingPathComponent("\(name).iconset")
+    try fm.createDirectory(at: iconset, withIntermediateDirectories: true)
+    let slots: [(String, NSImage, Int)] = [
+        ("icon_16x16", small16, 16), ("icon_16x16@2x", small32, 32), ("icon_32x32", small32, 32), ("icon_32x32@2x", master, 64),
+        ("icon_128x128", master, 128), ("icon_128x128@2x", master, 256), ("icon_256x256", master, 256),
+        ("icon_256x256@2x", master, 512), ("icon_512x512", master, 512), ("icon_512x512@2x", master, 1024),
+    ]
+    for (slot, image, pixels) in slots {
+        try png(image, pixels: pixels).write(to: iconset.appendingPathComponent(slot + ".png"))
+    }
+    let icns = outDir.appendingPathComponent("AppIcon-\(name).icns")
+    let iconutil = Process()
+    iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+    iconutil.arguments = ["-c", "icns", iconset.path, "-o", icns.path]
+    try iconutil.run()
+    iconutil.waitUntilExit()
+    guard iconutil.terminationStatus == 0 else { fail("iconutil failed for \(name)") }
+    print("wrote \(icns.path)")
 }
-
-for size in [16, 32, 128, 256, 512] {
-    try writePNG(pixels: size, name: "icon_\(size)x\(size).png")
-    try writePNG(pixels: size * 2, name: "icon_\(size)x\(size)@2x.png")
-}
-let preview = URL(fileURLWithPath: outPath).deletingPathExtension().appendingPathExtension("png")
-try master.representation(using: .png, properties: [:])!.write(to: preview)
-
-let iconutil = Process()
-iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-iconutil.arguments = ["-c", "icns", iconset.path, "-o", outPath]
-try iconutil.run()
-iconutil.waitUntilExit()
-guard iconutil.terminationStatus == 0 else { fail("iconutil failed") }

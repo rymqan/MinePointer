@@ -28,7 +28,8 @@ app=build/MinePointer.app
 rm -rf $app && mkdir -p $app/Contents/MacOS $app/Contents/Helpers $app/Contents/Resources
 mv "$out/MinePointer" $app/Contents/MacOS/
 mv "$out/ClosedCaseMotion" "$out/ClosedCaseRestore" $app/Contents/Helpers/
-cp Packaging/AppIcon.icns LICENSE THIRD_PARTY_NOTICES.md $app/Contents/Resources/
+cp Packaging/AppIcon-*.icns Packaging/Icon/MenuBarIcon.svg LICENSE THIRD_PARTY_NOTICES.md $app/Contents/Resources/
+cp Packaging/AppIcon-green.icns $app/Contents/Resources/AppIcon.icns
 cat > $app/Contents/Info.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

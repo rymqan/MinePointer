@@ -59,6 +59,7 @@ func settingsDefaults() -> [String: Any] {
     values["scroll_next_sign"] = Config().scrollNextSign
     values["indicator"] = Config().indicator
     values["record_sessions"] = false
+    values[AppIconChoice.configKey] = AppIconChoice.green.rawValue
     return values
 }
 
@@ -161,6 +162,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let login = switchRow("Launch at login", "Start MinePointer when you log in.", key: nil,
                               read: { LaunchAtLogin.isEnabled }, write: { [weak self] on in self?.app.setLaunchAtLogin(on) })
         let record = switchRow("Record raw sensor sessions", "For debugging; about 100 MB per hour.", key: "record_sessions")
+        let icon = appIconRow()
         let reset = actions.bind(RemoteButton("Reset to defaults", style: .secondary, height: 32)) { [weak self] _ in self?.resetDefaults() }
         let openConfig = actions.bind(RemoteButton("Open config.json", style: .secondary, height: 32)) { _ in
             Config.writeDefaultsIfMissing()
@@ -169,7 +171,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let buttons = rkHStack([reset, openConfig], spacing: 8)
         let note = rkWrap("Reset only changes the settings on these tabs; your calibration stays. config.json holds every other setting.", 12)
         let paths = rkVStack([rkLabel("Folders", 13, .semibold), pathRow("Config", configURL), pathRow("Logs", logsFolder)], spacing: 6, align: .leading)
-        return scrollPage([indicator, login, record, buttons, note, paths])
+        return scrollPage([icon, indicator, login, record, buttons, note, paths])
     }
 
     private func resetDefaults() {
@@ -177,6 +179,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         flush()
         try? updateConfigFile(defaults)
         app.indicator.setEnabled(false)
+        AppIconChoice.green.apply()
         reload()
     }
 
@@ -218,6 +221,40 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         let row = rkHStack([words, rkSpacer(), toggle], spacing: 12)
         words.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, constant: -60).isActive = true
         return row
+    }
+
+    /// The app icon picker: every variant with a small preview; a pick changes the icon in Finder at once.
+    private func appIconRow() -> NSView {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        for choice in AppIconChoice.allCases {
+            popup.addItem(withTitle: choice.title)
+            let preview = choice.image?.copy() as? NSImage
+            preview?.size = NSSize(width: 18, height: 18)
+            popup.lastItem?.image = preview
+        }
+        let error = rkWrap("", 12)
+        error.textColor = .systemRed
+        error.isHidden = true
+        // A pick is saved at once (not debounced), and only when Finder took it, so config.json and Finder always agree.
+        actions.bind(popup) { [weak self] control in
+            let choice = AppIconChoice.allCases[control.indexOfSelectedItem]
+            if let problem = choice.apply() {
+                popup.selectItem(at: AppIconChoice.allCases.firstIndex(of: .current) ?? 0)
+                error.stringValue = problem
+                error.isHidden = false
+            } else {
+                error.isHidden = true
+                self?.change(AppIconChoice.configKey, choice.rawValue)
+                self?.flush()
+            }
+        }
+        reloaders.append {
+            popup.selectItem(at: AppIconChoice.allCases.firstIndex(of: .current) ?? 0)
+            error.isHidden = true
+        }
+        return rkVStack([rkLabel("App icon", 13, .semibold), popup, rkWrap("Shown in Finder and Launchpad. Finder may take a few seconds to update.", 12), error],
+                        spacing: 6, align: .leading)
     }
 
     private func pathRow(_ name: String, _ url: URL) -> NSView {

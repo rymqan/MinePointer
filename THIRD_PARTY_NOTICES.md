@@ -68,4 +68,4 @@ The MIT license above does not cover `Assets/`. It contains Apple's AirPods Pro 
 
 ## MinePointer app icon
 
-The app icon (`Packaging/AppIcon.icns`) is MinePointer's own work, drawn by `Packaging/make-icon.swift` from an SF Symbol. It contains no AirPointer artwork and no Apple renders.
+The app icons (`Packaging/AppIcon-*.icns`) and the menu bar icon are MinePointer's own work: a closed case with a pixel Creeper-style face, drawn as SVG in `Packaging/Icon/` and built by `Packaging/make-icon.swift`. They contain no AirPointer artwork, no SF Symbols and no Apple renders. Minecraft is a trademark of Mojang Synergies AB; MinePointer is not affiliated with Mojang or Microsoft.
