@@ -146,7 +146,8 @@ func caseSamples(_ clip: CaseClip, config: Config, rest: Double = 1.5) -> [Motio
     while t < rest + clip.duration {
         let at = t - rest
         let p0 = clip.pose(at: at - h), p1 = clip.pose(at: at), p2 = clip.pose(at: at + h)
-        let accel = (p2.position - 2 * p1.position + p0.position) / (h * h) / 9.81 + [0, 1, 0]     // specific force in g, "up" at rest
+        let change: SIMD3<Double> = p2.position - p1.position * 2 + p0.position
+        let accel: SIMD3<Double> = change / (h * h * 9.81) + SIMD3<Double>(0, 1, 0)                // specific force in g, "up" at rest
         let turn = p2.rotation * p0.rotation.inverse                                                // world-frame rotation over 2h
         let omega = turn.angle < 1e-12 ? SIMD3<Double>() : turn.axis * (turn.angle / (2 * h) * 180 / .pi)
         let q = p1.rotation.inverse
@@ -229,7 +230,9 @@ struct CasePoseTracker {
             }
             guard let last = lastAccel, s.sensorTime > last, s.sensorTime - last < 0.1 else { return }
             let dt = s.sensorTime - last, w0 = 2 * Double.pi * Self.springHz
-            velocity += ((force - [0, 1, 0]) * 9.81 - w0 * w0 * position - 2 * w0 * velocity) * dt
+            let push: SIMD3<Double> = (force - SIMD3<Double>(0, 1, 0)) * 9.81           // split up: CI's compiler times out on one line
+            let pull: SIMD3<Double> = position * (w0 * w0) + velocity * (2 * w0)
+            velocity += (push - pull) * dt
             position += velocity * dt
         }
     }
